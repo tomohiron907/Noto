@@ -11,8 +11,7 @@ pub struct DriveClient {
 
 impl DriveClient {
     pub async fn new(app: &AppHandle) -> Result<Self> {
-        let mut tokens = token_store::load(app)?
-            .ok_or_else(|| anyhow!("Not authenticated"))?;
+        let mut tokens = token_store::load(app)?.ok_or_else(|| anyhow!("Not authenticated"))?;
 
         let now = chrono::Utc::now().timestamp();
         if tokens.expires_at - now < 60 {

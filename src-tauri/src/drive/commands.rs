@@ -16,13 +16,17 @@ const FIELDS: &str = "id,name,modifiedTime";
 #[tauri::command]
 pub async fn drive_ensure_folder(app: AppHandle) -> Result<String, String> {
     let client = DriveClient::new(&app).await.map_err(|e| e.to_string())?;
-    drive_ensure_folder_inner(&client).await.map_err(|e| e.to_string())
+    drive_ensure_folder_inner(&client)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn drive_list_notes(app: AppHandle) -> Result<Vec<NoteMetadata>, String> {
     let client = DriveClient::new(&app).await.map_err(|e| e.to_string())?;
-    let folder_id = drive_ensure_folder_inner(&client).await.map_err(|e| e.to_string())?;
+    let folder_id = drive_ensure_folder_inner(&client)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let query = format!(
         "mimeType='{}' and '{}' in parents and trashed=false",
@@ -94,7 +98,13 @@ pub async fn drive_write_note(
         }
 
         let updated: UpdatedFile = client
-            .multipart_upload(Method::PATCH, &url, &metadata.to_string(), &content, MD_MIME)
+            .multipart_upload(
+                Method::PATCH,
+                &url,
+                &metadata.to_string(),
+                &content,
+                MD_MIME,
+            )
             .await
             .map_err(|e| e.to_string())?
             .json()
@@ -107,9 +117,14 @@ pub async fn drive_write_note(
             modified_time: updated.modified_time,
         })
     } else {
-        let folder_id = drive_ensure_folder_inner(&client).await.map_err(|e| e.to_string())?;
+        let folder_id = drive_ensure_folder_inner(&client)
+            .await
+            .map_err(|e| e.to_string())?;
         let metadata = json!({ "name": file_name, "parents": [folder_id] });
-        let url = format!("{}?uploadType=multipart&fields={}", DRIVE_UPLOAD_API, FIELDS);
+        let url = format!(
+            "{}?uploadType=multipart&fields={}",
+            DRIVE_UPLOAD_API, FIELDS
+        );
 
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]

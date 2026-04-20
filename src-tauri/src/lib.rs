@@ -8,9 +8,34 @@ use drive::commands::{
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    
+    #[cfg(mobile)]
+    {
+        builder = builder.plugin(tauri_plugin_deep_link::init());
+    }
+    #[cfg(not(mobile))]
+    {
+        builder = builder.plugin(tauri_plugin_deep_link::init());
+    }
+
+    let builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .setup(|app| {
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                use tauri::{Emitter, Manager};
+                let app_handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    if let Some(url) = event.urls().first() {
+                        let _ = app_handle.emit("oauth_callback", url.to_string());
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             auth_start,
             auth_restore,

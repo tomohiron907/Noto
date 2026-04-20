@@ -7,7 +7,15 @@ use tokio::net::TcpListener;
 
 use super::types::{TokenSet, UserInfo};
 
+#[cfg(not(mobile))]
 const CLIENT_ID: &str = env!("GOOGLE_CLIENT_ID");
+
+#[cfg(mobile)]
+const CLIENT_ID: &str = env!("GOOGLE_IOS_CLIENT_ID");
+
+#[cfg(mobile)]
+const REVERSED_CLIENT_ID: &str = env!("GOOGLE_IOS_REVERSED_CLIENT_ID");
+
 const CLIENT_SECRET: &str = env!("GOOGLE_CLIENT_SECRET");
 const SCOPES: &str = "https://www.googleapis.com/auth/drive.file \
                       https://www.googleapis.com/auth/userinfo.email \
@@ -24,6 +32,7 @@ fn generate_pkce() -> (String, String) {
     (verifier, challenge)
 }
 
+#[cfg(not(mobile))]
 async fn start_localhost_server() -> Result<(u16, tokio::sync::oneshot::Receiver<String>)> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
@@ -44,13 +53,11 @@ async fn start_localhost_server() -> Result<(u16, tokio::sync::oneshot::Receiver
                 .next()
                 .and_then(|line| line.split_whitespace().nth(1))
                 .and_then(|path| {
-                    path.split('?')
-                        .nth(1)
-                        .and_then(|query| {
-                            query.split('&').find_map(|param| {
-                                param.strip_prefix("code=").map(str::to_string)
-                            })
-                        })
+                    path.split('?').nth(1).and_then(|query| {
+                        query
+                            .split('&')
+                            .find_map(|param| param.strip_prefix("code=").map(str::to_string))
+                    })
                 });
 
             let html = if code.is_some() {
@@ -75,6 +82,7 @@ async fn start_localhost_server() -> Result<(u16, tokio::sync::oneshot::Receiver
     Ok((port, rx))
 }
 
+#[cfg(not(mobile))]
 pub async fn start_oauth_flow(app: &tauri::AppHandle) -> Result<(TokenSet, UserInfo)> {
     let (verifier, challenge) = generate_pkce();
     let (port, rx) = start_localhost_server().await?;
@@ -111,12 +119,81 @@ pub async fn start_oauth_flow(app: &tauri::AppHandle) -> Result<(TokenSet, UserI
     Ok((tokens, user))
 }
 
+#[cfg(mobile)]
+pub async fn start_oauth_flow(app: &tauri::AppHandle) -> Result<(TokenSet, UserInfo)> {
+    use tauri::Listener;
+    let (verifier, challenge) = generate_pkce();
+    
+    let redirect_uri = format!("{}:/oauth2redirect", REVERSED_CLIENT_ID);
+    
+    let auth_url = format!(
+        "https://accounts.google.com/o/oauth2/v2/auth\
+        ?client_id={}\
+        &redirect_uri={}\
+        &response_type=code\
+        &scope={}\
+        &code_challenge={}\
+        &code_challenge_method=S256\
+        &access_type=offline\
+        &prompt=consent",
+        CLIENT_ID,
+        urlencoding::encode(&redirect_uri),
+        urlencoding::encode(SCOPES),
+        challenge,
+    );
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(1);
+    
+    let handler = app.once("oauth_callback", move |event| {
+        let payload = event.payload();
+        let url = payload.trim_matches('"');
+        if let Some(code) = url.split('?')
+            .nth(1)
+            .and_then(|query| {
+                query.split('&').find_map(|param| {
+                    param.strip_prefix("code=").map(str::to_string)
+                })
+            })
+        {
+            let _ = tx.blocking_send(code);
+        }
+    });
+
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(&auth_url, None::<&str>)
+        .map_err(|e| anyhow!("Failed to open browser: {}", e))?;
+
+    let code = match tokio::time::timeout(std::time::Duration::from_secs(300), rx.recv()).await {
+        Ok(Some(c)) => c,
+        _ => {
+            app.unlisten(handler);
+            return Err(anyhow!("OAuth timeout or cancelled"));
+        }
+    };
+
+    let tokens = exchange_code(&code, &verifier, &redirect_uri).await?;
+    let user = fetch_user_info(&tokens.access_token).await?;
+
+    Ok((tokens, user))
+}
+
 async fn exchange_code(code: &str, verifier: &str, redirect_uri: &str) -> Result<TokenSet> {
     let client = reqwest::Client::new();
+    #[cfg(not(mobile))]
     let params = [
         ("code", code),
         ("client_id", CLIENT_ID),
         ("client_secret", CLIENT_SECRET),
+        ("redirect_uri", redirect_uri),
+        ("grant_type", "authorization_code"),
+        ("code_verifier", verifier),
+    ];
+
+    #[cfg(mobile)]
+    let params = [
+        ("code", code),
+        ("client_id", CLIENT_ID),
         ("redirect_uri", redirect_uri),
         ("grant_type", "authorization_code"),
         ("code_verifier", verifier),
@@ -149,9 +226,17 @@ async fn exchange_code(code: &str, verifier: &str, redirect_uri: &str) -> Result
 
 pub async fn refresh_access_token(refresh_token: &str) -> Result<TokenSet> {
     let client = reqwest::Client::new();
+    #[cfg(not(mobile))]
     let params = [
         ("client_id", CLIENT_ID),
         ("client_secret", CLIENT_SECRET),
+        ("refresh_token", refresh_token),
+        ("grant_type", "refresh_token"),
+    ];
+
+    #[cfg(mobile)]
+    let params = [
+        ("client_id", CLIENT_ID),
         ("refresh_token", refresh_token),
         ("grant_type", "refresh_token"),
     ];

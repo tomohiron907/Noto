@@ -2,8 +2,14 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window (desktop only)",
-  "platforms": ["macOS", "windows", "linux"],
-  "windows": ["main"],
+  "platforms": [
+    "macOS",
+    "windows",
+    "linux"
+  ],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "opener:default",
@@ -11,6 +17,7 @@
     "store:allow-get",
     "store:allow-set",
     "store:allow-load",
-    "store:allow-save"
+    "store:allow-save",
+    "deep-link:default"
   ]
 }
