@@ -7,6 +7,7 @@ interface NotesState {
   notes: NoteMetadata[];
   activeId: string | null;
   activeContent: string;
+  activeTitle: string;
   dirty: boolean;
   syncing: boolean;
   error: string | null;
@@ -17,6 +18,7 @@ interface NotesState {
   saveNote: (content: string) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   markDirty: (content: string) => void;
+  setActiveTitle: (title: string) => void;
 }
 
 export const useNotesStore = create<NotesState>()(
@@ -24,6 +26,7 @@ export const useNotesStore = create<NotesState>()(
     notes: [],
     activeId: null,
     activeContent: "",
+    activeTitle: "",
     dirty: false,
     syncing: false,
     error: null,
@@ -39,9 +42,11 @@ export const useNotesStore = create<NotesState>()(
     },
 
     openNote: async (id: string) => {
+      const note = get().notes.find((n) => n.id === id);
       set((s) => {
         s.activeId = id;
         s.activeContent = "";
+        s.activeTitle = note?.title ?? "Untitled";
         s.dirty = false;
       });
       try {
@@ -64,6 +69,7 @@ export const useNotesStore = create<NotesState>()(
           s.notes.unshift(meta);
           s.activeId = meta.id;
           s.activeContent = "";
+          s.activeTitle = "Untitled";
           s.dirty = false;
           s.syncing = false;
         });
@@ -74,14 +80,12 @@ export const useNotesStore = create<NotesState>()(
     },
 
     saveNote: async (content: string) => {
-      const { activeId, notes } = get();
+      const { activeId, notes, activeTitle } = get();
       if (!activeId) return;
       const note = notes.find((n) => n.id === activeId);
       if (!note) return;
 
-      // Extract title from first line (strip Markdown heading #)
-      const firstLine = content.split("\n")[0] ?? "";
-      const title = firstLine.replace(/^#+\s*/, "").trim() || "Untitled";
+      const title = activeTitle.trim() || "Untitled";
 
       set((s) => {
         s.syncing = true;
@@ -116,6 +120,13 @@ export const useNotesStore = create<NotesState>()(
     markDirty: (content: string) => {
       set((s) => {
         s.activeContent = content;
+        s.dirty = true;
+      });
+    },
+
+    setActiveTitle: (title: string) => {
+      set((s) => {
+        s.activeTitle = title;
         s.dirty = true;
       });
     },

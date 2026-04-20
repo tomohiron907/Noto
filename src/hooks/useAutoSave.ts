@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNotesStore } from "../stores/notesStore";
 
 export function useAutoSave() {
-  const { dirty, activeContent, saveNote } = useNotesStore();
+  const { dirty, activeContent, activeTitle, saveNote } = useNotesStore();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -14,5 +14,5 @@ export function useAutoSave() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [dirty, activeContent, saveNote]);
+  }, [dirty, activeContent, activeTitle, saveNote]);
 }

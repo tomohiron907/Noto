@@ -11,6 +11,7 @@ import CharacterCount from "@tiptap/extension-character-count";
 import Placeholder from "@tiptap/extension-placeholder";
 import { all, createLowlight } from "lowlight";
 import { markdownExtension } from "../../lib/markdown";
+import GlobalDragHandle from "tiptap-extension-global-drag-handle";
 
 const lowlight = createLowlight(all);
 
@@ -31,6 +32,7 @@ export const extensions = [
   TableCell,
   CodeBlockLowlight.configure({ lowlight }),
   CharacterCount,
-  Placeholder.configure({ placeholder: "Type '/' for commands, or start writing…" }),
+  Placeholder.configure({ placeholder: "Type '/' for commands…" }),
+  GlobalDragHandle.configure({ dragHandleWidth: 20, scrollTreshold: 100 }),
   markdownExtension,
 ];
