@@ -497,7 +497,7 @@
 				C194A3A1067F8F424C50757F /* release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = debug;
+			defaultConfigurationName = release;
 		};
 		5EAD9F56E26B3BD07B5CA1A5 /* Build configuration list for PBXNativeTarget "noto_iOS" */ = {
 			isa = XCConfigurationList;
@@ -506,7 +506,7 @@
 				8ECB6F9AC1EC58E55D9F9BCB /* release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = debug;
+			defaultConfigurationName = release;
 		};
 /* End XCConfigurationList section */
 	};

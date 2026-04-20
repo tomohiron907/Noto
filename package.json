@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "ios": "tauri ios dev --open",
-    "ios:device": "tauri ios dev --host --open"
+    "ios:device": "tauri ios dev --host --open",
+    "ios:build": "tauri ios build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
