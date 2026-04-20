@@ -1,6 +1,11 @@
 # Secrets
 .env
 
+# iOS build artifacts (generated, not needed in git)
+src-tauri/gen/apple/build/
+src-tauri/gen/apple/Externals/
+
+
 # Logs
 logs
 *.log

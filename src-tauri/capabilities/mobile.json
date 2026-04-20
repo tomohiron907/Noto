@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-default",
+  "description": "Capability for mobile (iOS) — shell plugin excluded",
+  "platforms": ["iOS"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "store:allow-get",
+    "store:allow-set",
+    "store:allow-load",
+    "store:allow-save"
+  ]
+}
