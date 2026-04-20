@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
-import { Plus, LogOut, Search } from "lucide-react";
+import { Plus, LogOut, Search, X } from "lucide-react";
 import { useNotesStore } from "../../stores/notesStore";
 import { useAuthStore } from "../../stores/authStore";
 import NoteCard from "../ui/NoteCard";
 
 const LAST_NOTE_KEY = "noto_last_note_id";
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const { notes, activeId, loadNotes, openNote, createNote, deleteNote, syncing, error } =
     useNotesStore();
   const { user, signOut } = useAuthStore();
@@ -40,21 +44,31 @@ export default function Sidebar() {
       {/* Drag region + title (overlaid by macOS traffic lights) */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800"
+        className="flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800 relative z-10"
         style={{ height: "calc(var(--titlebar-height) + 20px)", paddingTop: "var(--titlebar-height)" }}
       >
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 select-none pl-16">
           {syncing ? "Saving…" : "Notes"}
         </span>
-        <button
-          onClick={createNote}
-          disabled={syncing}
-          className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
-          aria-label="New note (⌘N)"
-          title="New note (⌘N)"
-        >
-          <Plus size={16} />
-        </button>
+        <div className="flex items-center gap-1 z-20">
+          <button
+            onClick={() => { createNote(); onClose?.(); }}
+            disabled={syncing}
+            className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
+            aria-label="New note (⌘N)"
+            title="New note (⌘N)"
+          >
+            <Plus size={16} />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+            aria-label="Close notes menu"
+            title="Close menu"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -89,7 +103,10 @@ export default function Sidebar() {
             key={note.id}
             note={note}
             active={note.id === activeId}
-            onClick={() => openNote(note.id)}
+            onClick={() => {
+              openNote(note.id);
+              onClose?.();
+            }}
             onDelete={() => deleteNote(note.id)}
           />
         ))}
