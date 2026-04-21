@@ -38,13 +38,13 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   return (
     <aside
-      className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800"
+      className="flex flex-col h-full bg-white dark:bg-neutral-800 border-r border-neutral-200 dark:border-neutral-700"
       style={{ width: "var(--sidebar-width)", flexShrink: 0 }}
     >
       {/* Drag region + title (overlaid by macOS traffic lights) */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800 relative z-10"
+        className="flex items-center justify-between px-4 border-b border-neutral-200 dark:border-neutral-700 relative z-10"
         style={{ height: "calc(var(--titlebar-height) + 20px)", paddingTop: "var(--titlebar-height)" }}
       >
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 select-none pl-16">
@@ -54,7 +54,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <button
             onClick={() => { createNote(); onClose?.(); }}
             disabled={syncing}
-            className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
+            className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
             aria-label="New note (⌘N)"
             title="New note (⌘N)"
           >
@@ -62,7 +62,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </button>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors"
             aria-label="Close notes menu"
             title="Close menu"
           >
@@ -73,7 +73,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
       {/* Search */}
       <div className="px-2 py-2">
-        <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600">
           <Search size={13} className="text-gray-400 shrink-0" />
           <input
             value={query}
@@ -113,7 +113,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       </div>
 
       {/* Footer */}
-      <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2">
+      <div className="px-3 py-2 border-t border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
         {user?.picture && (
           <img src={user.picture} alt={user.name} className="w-6 h-6 rounded-full shrink-0" />
         )}

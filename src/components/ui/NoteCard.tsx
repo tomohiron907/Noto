@@ -21,8 +21,8 @@ export default function NoteCard({ note, active, onClick, onDelete }: Props) {
       className={clsx(
         "group flex items-start justify-between gap-2 px-3 py-2.5 rounded-lg cursor-pointer select-none",
         active
-          ? "bg-blue-50 dark:bg-blue-900/30"
-          : "hover:bg-gray-100 dark:hover:bg-gray-800"
+          ? "bg-gray-200/70 dark:bg-white/10"
+          : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
       )}
     >
       <div className="min-w-0">
@@ -30,13 +30,13 @@ export default function NoteCard({ note, active, onClick, onDelete }: Props) {
           className={clsx(
             "text-sm font-medium truncate",
             active
-              ? "text-blue-700 dark:text-blue-300"
-              : "text-gray-800 dark:text-gray-200"
+              ? "text-gray-900 dark:text-gray-100"
+              : "text-neutral-800 dark:text-neutral-200"
           )}
         >
           {note.title || "Untitled"}
         </p>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{ago}</p>
+        <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">{ago}</p>
       </div>
       <button
         onClick={(e) => {
