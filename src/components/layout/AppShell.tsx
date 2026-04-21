@@ -9,7 +9,7 @@ export default function AppShell() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white dark:bg-gray-950 relative">
+    <div className="flex h-screen overflow-hidden bg-transparent relative">
       {/* Overlay when sidebar is open */}
       {isSidebarOpen && (
         <div 
@@ -27,10 +27,10 @@ export default function AppShell() {
         <Sidebar onClose={() => setIsSidebarOpen(false)} />
       </div>
 
-      <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-white dark:bg-gray-950">
+      <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-transparent">
         {/* Header containing Drag region and Menu button */}
         <header 
-          className="shrink-0 relative w-full bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 flex items-center z-30" 
+          className="shrink-0 relative w-full bg-white/30 dark:bg-gray-950/30 backdrop-blur-sm border-b border-gray-200/40 dark:border-gray-800/40 flex items-center z-30"
           style={{ 
             paddingTop: "env(safe-area-inset-top, 0px)",
             minHeight: "calc(env(safe-area-inset-top, 0px) + 48px)"

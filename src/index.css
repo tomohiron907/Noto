@@ -7,13 +7,19 @@
     --titlebar-height: 38px;
   }
 
+  html, #root {
+    background: transparent;
+  }
+
   body {
-    @apply bg-white text-gray-900 antialiased;
+    @apply text-gray-900 antialiased;
+    background: transparent;
     font-family: 'Noto Sans JP', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
   .dark body {
-    @apply bg-gray-950 text-gray-100;
+    @apply text-gray-100;
+    background: transparent;
   }
 }
 

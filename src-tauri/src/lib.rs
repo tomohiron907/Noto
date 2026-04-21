@@ -34,6 +34,14 @@ pub fn run() {
                     }
                 });
             }
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                let window = _app.get_webview_window("main").unwrap();
+                apply_vibrancy(&window, NSVisualEffectMaterial::Sidebar, None, None)
+                    .expect("apply_vibrancy failed");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
