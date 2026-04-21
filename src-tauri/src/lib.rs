@@ -27,8 +27,8 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 use tauri::{Emitter, Manager};
-                let app_handle = app.handle().clone();
-                app.deep_link().on_open_url(move |event| {
+                let app_handle = _app.handle().clone();
+                _app.deep_link().on_open_url(move |event| {
                     if let Some(url) = event.urls().first() {
                         let _ = app_handle.emit("oauth_callback", url.to_string());
                     }
