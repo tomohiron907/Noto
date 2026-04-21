@@ -13,7 +13,7 @@ function getMarkdown(editor: ReturnType<typeof useEditor>): string {
 }
 
 export default function NoteEditor() {
-  const { activeId, activeContent, activeTitle, markDirty, setActiveTitle, syncing, dirty } =
+  const { activeId, activeContent, activeTitle, markDirty, setActiveTitle, syncing, dirty, loading } =
     useNotesStore();
   useAutoSave();
 
@@ -88,7 +88,16 @@ export default function NoteEditor() {
 
           {/* Editor body */}
           <SlashMenu editor={editor} />
-          <EditorContent editor={editor} />
+          {loading && !activeContent ? (
+            <div className="animate-pulse space-y-3 mt-4">
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded" />
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6" />
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3" />
+            </div>
+          ) : (
+            <EditorContent editor={editor} />
+          )}
         </div>
       </div>
 

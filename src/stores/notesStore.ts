@@ -10,7 +10,10 @@ interface NotesState {
   activeTitle: string;
   dirty: boolean;
   syncing: boolean;
+  loading: boolean;
   error: string | null;
+  contentCache: Record<string, string>;
+  cacheVersions: Record<string, string>;
 
   loadNotes: () => Promise<void>;
   openNote: (id: string) => Promise<void>;
@@ -29,7 +32,10 @@ export const useNotesStore = create<NotesState>()(
     activeTitle: "",
     dirty: false,
     syncing: false,
+    loading: false,
     error: null,
+    contentCache: {},
+    cacheVersions: {},
 
     loadNotes: async () => {
       try {
@@ -42,21 +48,36 @@ export const useNotesStore = create<NotesState>()(
     },
 
     openNote: async (id: string) => {
-      const note = get().notes.find((n) => n.id === id);
+      const { contentCache, cacheVersions, notes } = get();
+      const note = notes.find((n) => n.id === id);
+      const cached = contentCache[id];
+      const isUpToDate = cached !== undefined
+        && note !== undefined
+        && cacheVersions[id] === note.modified_time;
+
       set((s) => {
         s.activeId = id;
-        s.activeContent = "";
+        s.activeContent = cached ?? "";
         s.activeTitle = note?.title ?? "Untitled";
         s.dirty = false;
+        s.loading = !isUpToDate;
       });
+
+      if (isUpToDate) return;
+
       try {
         const content = await tauriDrive.readNote(id);
         set((s) => {
+          if (s.activeId !== id) return;
           s.activeContent = content;
+          s.contentCache[id] = content;
+          s.cacheVersions[id] = note?.modified_time ?? "";
+          s.loading = false;
         });
       } catch (e) {
         set((s) => {
           s.error = String(e);
+          s.loading = false;
         });
       }
     },
@@ -97,6 +118,8 @@ export const useNotesStore = create<NotesState>()(
           s.syncing = false;
           const idx = s.notes.findIndex((n) => n.id === activeId);
           if (idx !== -1) s.notes[idx] = updated;
+          s.contentCache[activeId] = content;
+          s.cacheVersions[activeId] = updated.modified_time;
         });
       } catch (e) {
         set((s) => {

@@ -22,7 +22,7 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
