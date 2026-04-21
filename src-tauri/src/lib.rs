@@ -6,6 +6,34 @@ use drive::commands::{
     drive_delete_note, drive_ensure_folder, drive_list_notes, drive_read_note, drive_write_note,
 };
 
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn set_traffic_lights(window: tauri::WebviewWindow, visible: bool) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+    use tauri::Manager;
+
+    let app = window.app_handle().clone();
+    let _ = app.run_on_main_thread(move || {
+        let Ok(ptr) = window.ns_window() else { return };
+        unsafe {
+            let ns_window: &NSWindow = &*(ptr as *const NSWindow);
+            for kind in [
+                NSWindowButton::CloseButton,
+                NSWindowButton::MiniaturizeButton,
+                NSWindowButton::ZoomButton,
+            ] {
+                if let Some(btn) = ns_window.standardWindowButton(kind) {
+                    btn.setHidden(!visible);
+                }
+            }
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn set_traffic_lights(_window: tauri::WebviewWindow, _visible: bool) {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -53,6 +81,7 @@ pub fn run() {
             drive_read_note,
             drive_write_note,
             drive_delete_note,
+            set_traffic_lights,
         ]);
 
     #[cfg(not(mobile))]
