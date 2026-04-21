@@ -9,7 +9,7 @@ export default function AppShell() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-transparent relative">
+    <div className="flex h-screen overflow-hidden bg-transparent relative border border-white/20 rounded-[10px] box-border">
       {/* Overlay when sidebar is open */}
       {isSidebarOpen && (
         <div 
