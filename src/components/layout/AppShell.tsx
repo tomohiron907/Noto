@@ -8,7 +8,6 @@ import { invoke } from "@tauri-apps/api/core";
 const SIDEBAR_WIDTH = 240;
 const HOVER_EDGE_PX = 10;
 const HOVER_CLOSE_PX = SIDEBAR_WIDTH + 20;
-const SWIPE_EDGE_PX = 30;
 
 const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 
@@ -23,7 +22,9 @@ export default function AppShell() {
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
   const isDraggingFromEdge = useRef(false);
+  const gestureClassified = useRef(false);
   const lastDragOffset = useRef(0);
   // Keep a ref to isSidebarOpen so touch handlers don't capture stale state
   const isSidebarOpenRef = useRef(false);
@@ -66,23 +67,41 @@ export default function AppShell() {
 
     const onTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
-      if (touch.clientX > SWIPE_EDGE_PX && !isSidebarOpenRef.current) return;
-      isDraggingFromEdge.current = true;
       touchStartX.current = touch.clientX;
+      touchStartY.current = touch.clientY;
+      isDraggingFromEdge.current = false;
+      gestureClassified.current = false;
       lastDragOffset.current = isSidebarOpenRef.current ? SIDEBAR_WIDTH : 0;
-      if (sidebarRef.current) {
-        sidebarRef.current.style.transition = "none";
-        const startOffset = isSidebarOpenRef.current ? 0 : -SIDEBAR_WIDTH;
-        sidebarRef.current.style.transform = `translateX(${startOffset}px)`;
-      }
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (!isDraggingFromEdge.current || touchStartX.current === null) return;
-      e.preventDefault();
+      if (touchStartX.current === null || touchStartY.current === null) return;
+
       const touch = e.touches[0];
+      const deltaX = touch.clientX - touchStartX.current;
+      const deltaY = touch.clientY - touchStartY.current;
+
+      if (!gestureClassified.current) {
+        if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) return;
+        gestureClassified.current = true;
+
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          if (!isSidebarOpenRef.current && deltaX > 0) {
+            isDraggingFromEdge.current = true;
+          } else if (isSidebarOpenRef.current) {
+            isDraggingFromEdge.current = true;
+          }
+          if (isDraggingFromEdge.current && sidebarRef.current) {
+            sidebarRef.current.style.transition = "none";
+          }
+        }
+      }
+
+      if (!isDraggingFromEdge.current) return;
+
+      e.preventDefault();
       const base = isSidebarOpenRef.current ? SIDEBAR_WIDTH : 0;
-      const raw = base + (touch.clientX - touchStartX.current);
+      const raw = base + deltaX;
       const delta = Math.max(0, Math.min(SIDEBAR_WIDTH, raw));
       lastDragOffset.current = delta;
       if (sidebarRef.current) {
@@ -91,9 +110,13 @@ export default function AppShell() {
     };
 
     const onTouchEnd = () => {
-      if (!isDraggingFromEdge.current) return;
+      const wasDragging = isDraggingFromEdge.current;
       isDraggingFromEdge.current = false;
+      gestureClassified.current = false;
       touchStartX.current = null;
+      touchStartY.current = null;
+
+      if (!wasDragging) return;
 
       if (sidebarRef.current) {
         sidebarRef.current.style.transition = "";
