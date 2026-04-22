@@ -44,9 +44,11 @@
 	<array>
 		<dict>
 			<key>CFBundleURLSchemes</key>
-			<array/>
+			<array>
+				<string>com.googleusercontent.apps.668042635984-2id3b5m51tegieqag22pbsf1cqsolfi1</string>
+			</array>
 			<key>CFBundleURLName</key>
-			<string>https</string>
+			<string>com.googleusercontent.apps.668042635984-2id3b5m51tegieqag22pbsf1cqsolfi1</string>
 		</dict>
 	</array>
 </dict>

@@ -42,8 +42,7 @@
     "deep-link": {
       "mobile": [
         {
-          "host": "oauth2callback",
-          "pathPrefix": ["/"]
+          "scheme": ["com.googleusercontent.apps.668042635984-2id3b5m51tegieqag22pbsf1cqsolfi1"]
         }
       ]
     }
