@@ -236,6 +236,22 @@
   background-color: rgba(200, 200, 200, 0.08);
 }
 
+/* ─── Math (KaTeX) ─── */
+
+.tiptap div[data-type="block-math"] {
+  margin: 0.75rem 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.tiptap div[data-type="block-math"] .tiptap-mathematics-render {
+  display: inline-block;
+}
+
+.tiptap span[data-type="inline-math"] {
+  display: inline;
+}
+
 /* macOS scrollbar — transparent track to blend with vibrancy */
 ::-webkit-scrollbar {
   width: 6px;

@@ -1,4 +1,5 @@
 import StarterKit from "@tiptap/starter-kit";
+import Mathematics from "@tiptap/extension-mathematics";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
@@ -37,4 +38,5 @@ export const extensions = [
   GlobalDragHandle.configure({ dragHandleWidth: 20, scrollTreshold: 100 }),
   markdownPaste,
   markdownExtension,
+  Mathematics,
 ];
