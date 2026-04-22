@@ -252,6 +252,45 @@
   display: inline;
 }
 
+/* ─── Math source editing (Typora-style inline editing) ─── */
+
+.math-source-block {
+  margin: 0.75rem 0;
+  border-left: 3px solid #aaa;
+  border-radius: 3px;
+  background: rgba(135, 131, 120, 0.07);
+}
+
+.dark .math-source-block {
+  border-left-color: #555;
+  background: rgba(200, 200, 200, 0.05);
+}
+
+.math-source-delimiter {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85em;
+  color: #888;
+  padding: 0.1rem 0.6rem;
+  user-select: none;
+  pointer-events: none;
+  line-height: 1.5;
+}
+
+.math-source-content {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.9em;
+  padding: 0.1rem 0.6rem;
+  min-height: 1.5em;
+  white-space: pre-wrap;
+  outline: none;
+  line-height: 1.6;
+  color: #37352f;
+}
+
+.dark .math-source-content {
+  color: #cfcfcf;
+}
+
 /* macOS scrollbar — transparent track to blend with vibrancy */
 ::-webkit-scrollbar {
   width: 6px;

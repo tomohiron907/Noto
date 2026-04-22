@@ -14,6 +14,7 @@ import { all, createLowlight } from "lowlight";
 import { markdownExtension } from "../../lib/markdown";
 import { markdownPaste, protectMath, restoreMath } from "../../lib/markdownPaste";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
+import { mathSourceNode, MathEditing } from "./mathEditing";
 
 const lowlight = createLowlight(all);
 
@@ -77,6 +78,8 @@ export const extensions = [
   GlobalDragHandle.configure({ dragHandleWidth: 20, scrollTreshold: 100 }),
   markdownPaste,
   markdownExtension,
+  mathSourceNode,
+  MathEditing,
   BlockMathWithSerializer,
   InlineMathWithSerializer,
 ];
