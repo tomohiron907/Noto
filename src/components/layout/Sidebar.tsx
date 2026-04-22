@@ -371,7 +371,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 className={clsx(
                   "mx-1 mt-1 rounded border-2 border-dashed text-xs text-center py-1.5 transition-colors select-none",
                   hoverRoot
-                    ? "border-blue-400 bg-blue-50 dark:bg-blue-900/20 text-blue-500"
+                    ? "border-neutral-400 bg-neutral-100 dark:bg-neutral-700/50 text-neutral-500 dark:text-neutral-400"
                     : "border-neutral-300 dark:border-neutral-600 text-gray-400"
                 )}
               >

@@ -144,7 +144,7 @@ export default function FolderTreeItem({
           isActive
             ? "bg-neutral-200/80 dark:bg-white/10 text-gray-900 dark:text-gray-100"
             : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700/60",
-          isDragOver && "ring-1 ring-inset ring-blue-400 bg-blue-50/50 dark:bg-blue-900/20"
+          isDragOver && "ring-1 ring-inset ring-neutral-400 bg-neutral-200/60 dark:ring-neutral-500 dark:bg-neutral-600/40"
         )}
       >
         {/* Chevron — toggle expand */}
