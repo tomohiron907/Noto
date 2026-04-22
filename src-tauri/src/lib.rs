@@ -3,7 +3,8 @@ pub mod drive;
 
 use auth::commands::{auth_restore, auth_sign_out, auth_start};
 use drive::commands::{
-    drive_delete_note, drive_ensure_folder, drive_list_notes, drive_read_note, drive_write_note,
+    drive_create_folder, drive_delete_note, drive_ensure_folder, drive_list_notes,
+    drive_list_tree, drive_move_note, drive_read_note, drive_write_note,
 };
 
 #[cfg(target_os = "macos")]
@@ -78,9 +79,12 @@ pub fn run() {
             auth_sign_out,
             drive_ensure_folder,
             drive_list_notes,
+            drive_list_tree,
             drive_read_note,
             drive_write_note,
             drive_delete_note,
+            drive_create_folder,
+            drive_move_note,
             set_traffic_lights,
         ]);
 
