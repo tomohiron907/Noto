@@ -105,7 +105,7 @@ export default function AppShell() {
       const delta = Math.max(0, Math.min(SIDEBAR_WIDTH, raw));
       lastDragOffset.current = delta;
       if (sidebarRef.current) {
-        sidebarRef.current.style.transform = `translateX(${delta - SIDEBAR_WIDTH}px)`;
+        sidebarRef.current.style.translate = `${delta - SIDEBAR_WIDTH}px 0`;
       }
     };
 
@@ -120,7 +120,7 @@ export default function AppShell() {
 
       if (sidebarRef.current) {
         sidebarRef.current.style.transition = "";
-        sidebarRef.current.style.transform = "";
+        sidebarRef.current.style.translate = "";
       }
 
       if (lastDragOffset.current > SIDEBAR_WIDTH / 2) {
