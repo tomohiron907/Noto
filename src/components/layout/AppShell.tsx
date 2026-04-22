@@ -79,6 +79,7 @@ export default function AppShell() {
 
     const onTouchMove = (e: TouchEvent) => {
       if (!isDraggingFromEdge.current || touchStartX.current === null) return;
+      e.preventDefault();
       const touch = e.touches[0];
       const base = isSidebarOpenRef.current ? SIDEBAR_WIDTH : 0;
       const raw = base + (touch.clientX - touchStartX.current);
@@ -107,7 +108,7 @@ export default function AppShell() {
     };
 
     el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
 
     return () => {

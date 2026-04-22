@@ -240,8 +240,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
         data-tauri-drag-region
         className="flex items-center justify-between px-3 border-b border-neutral-200 dark:border-neutral-700 relative z-10"
         style={{
-          height: "calc(var(--titlebar-height) + 20px)",
-          paddingTop: "var(--titlebar-height)",
+          paddingTop: "max(var(--titlebar-height), env(safe-area-inset-top, 0px))",
+          minHeight: "calc(max(var(--titlebar-height), env(safe-area-inset-top, 0px)) + 20px)",
         }}
       >
         <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 select-none pl-16">
