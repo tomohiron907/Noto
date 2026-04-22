@@ -2,10 +2,10 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 
-type MathEntry = { latex: string; isBlock: boolean };
+export type MathEntry = { latex: string; isBlock: boolean };
 
 // Extract math blocks before markdown parsing to prevent mangling of \ and _
-function protectMath(text: string): { result: string; map: Map<string, MathEntry> } {
+export function protectMath(text: string): { result: string; map: Map<string, MathEntry> } {
   const map = new Map<string, MathEntry>();
   let counter = 0;
 
@@ -35,7 +35,7 @@ function escapeAttr(latex: string): string {
 }
 
 // Replace placeholders with TipTap math node HTML after markdown parsing
-function restoreMath(html: string, map: Map<string, MathEntry>): string {
+export function restoreMath(html: string, map: Map<string, MathEntry>): string {
   let result = html;
   for (const [key, entry] of map) {
     const attr = escapeAttr(entry.latex);
