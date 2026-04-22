@@ -39,7 +39,7 @@ export default function FileTreeItem({
           active ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"
         )}
       />
-      <span className="flex-1 text-xs truncate min-w-0">{note.title || "Untitled"}</span>
+      <span className="flex-1 text-sm truncate min-w-0">{note.title || "Untitled"}</span>
       <button
         onClick={(e) => {
           e.stopPropagation();

@@ -54,7 +54,7 @@ export function InlineCreateInput({
         }}
         onBlur={onConfirm}
         placeholder={type === "folder" ? "folder name" : "file name"}
-        className="flex-1 text-xs bg-transparent border-b border-blue-400 outline-none text-gray-700 dark:text-gray-200 placeholder-gray-400 min-w-0"
+        className="flex-1 text-sm bg-transparent border-b border-neutral-400 outline-none text-gray-700 dark:text-gray-200 placeholder-gray-400 min-w-0"
       />
     </div>
   );
@@ -178,7 +178,7 @@ export default function FolderTreeItem({
           ) : (
             <Folder size={13} className="shrink-0 text-gray-400 dark:text-gray-500" />
           )}
-          <span className="text-xs truncate min-w-0">{folder.name}</span>
+          <span className="text-sm truncate min-w-0">{folder.name}</span>
         </div>
 
         {/* Hover action buttons */}

@@ -244,7 +244,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           paddingTop: "var(--titlebar-height)",
         }}
       >
-        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 select-none pl-16">
+        <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 select-none pl-16">
           {syncing ? "Saving…" : "Notes"}
         </span>
 
@@ -292,7 +292,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search…"
-            className="flex-1 text-xs bg-transparent outline-none text-gray-700 dark:text-gray-200 placeholder-gray-400"
+            className="flex-1 text-sm bg-transparent outline-none text-gray-700 dark:text-gray-200 placeholder-gray-400"
           />
         </div>
       </div>
@@ -391,7 +391,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
             className="w-6 h-6 rounded-full shrink-0"
           />
         )}
-        <span className="text-xs text-gray-500 dark:text-gray-400 truncate flex-1">
+        <span className="text-sm text-gray-500 dark:text-gray-400 truncate flex-1">
           {user?.email}
         </span>
         <button
