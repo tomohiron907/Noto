@@ -66,9 +66,9 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 use tauri::Manager;
-                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+                use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
                 let window = _app.get_webview_window("main").unwrap();
-                apply_vibrancy(&window, NSVisualEffectMaterial::Sidebar, None, None)
+                apply_vibrancy(&window, NSVisualEffectMaterial::Sidebar, Some(NSVisualEffectState::Active), None)
                     .expect("apply_vibrancy failed");
             }
             Ok(())
