@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useAuthStore } from "./stores/authStore";
 import { useNotesStore } from "./stores/notesStore";
 import AuthScreen from "./components/auth/AuthScreen";
@@ -6,7 +7,7 @@ import AppShell from "./components/layout/AppShell";
 
 export default function App() {
   const { user, loading, restoreSession } = useAuthStore();
-  const { createNote, activeId, deleteNote } = useNotesStore();
+  const { createNote, activeId, deleteNote, loadTree } = useNotesStore();
 
   // Respect system dark/light mode
   useEffect(() => {
@@ -35,6 +36,14 @@ export default function App() {
   useEffect(() => {
     restoreSession();
   }, [restoreSession]);
+
+  // Refresh tree when background sync delivers new data
+  useEffect(() => {
+    const unlisten = listen("sync:updated", () => {
+      loadTree();
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [loadTree]);
 
   if (loading) {
     return (

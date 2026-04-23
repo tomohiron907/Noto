@@ -23,3 +23,10 @@ export interface TreeResponse {
   folders: FolderMetadata[];
   notes: NoteMetadata[];
 }
+
+export type SyncPhase = "idle" | "syncing" | { error: string };
+
+export interface SyncStatus {
+  phase: SyncPhase;
+  last_sync_at: number | null;
+}
