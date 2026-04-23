@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { useAuthStore } from "./stores/authStore";
 import { useNotesStore } from "./stores/notesStore";
 import AuthScreen from "./components/auth/AuthScreen";
@@ -7,7 +8,7 @@ import AppShell from "./components/layout/AppShell";
 
 export default function App() {
   const { user, loading, restoreSession } = useAuthStore();
-  const { createNote, activeId, deleteNote, loadTree } = useNotesStore();
+  const { createNote, activeId, deleteNote, loadTree, refreshActiveNote } = useNotesStore();
 
   // Respect system dark/light mode
   useEffect(() => {
@@ -37,13 +38,39 @@ export default function App() {
     restoreSession();
   }, [restoreSession]);
 
+  // Trigger immediate sync when window regains focus or becomes visible
+  useEffect(() => {
+    const handler = () => invoke("sync_trigger").catch(() => {});
+    const visibilityHandler = () => { if (!document.hidden) handler(); };
+    window.addEventListener("focus", handler);
+    document.addEventListener("visibilitychange", visibilityHandler);
+    return () => {
+      window.removeEventListener("focus", handler);
+      document.removeEventListener("visibilitychange", visibilityHandler);
+    };
+  }, []);
+
   // Refresh tree when background sync delivers new data
   useEffect(() => {
     const unlisten = listen("sync:updated", () => {
+      console.log("[sync] sync:updated received");
       loadTree();
     });
     return () => { unlisten.then((fn) => fn()); };
   }, [loadTree]);
+
+  // Refresh active note content when another device edits it
+  useEffect(() => {
+    const unlisten = listen<string[]>("sync:notes_updated", (event) => {
+      const { activeId: id, dirty } = useNotesStore.getState();
+      console.log("[sync] sync:notes_updated received", event.payload, "activeId=", id, "dirty=", dirty);
+      if (id && !dirty && event.payload.includes(id)) {
+        console.log("[sync] calling refreshActiveNote for", id);
+        refreshActiveNote();
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [refreshActiveNote]);
 
   if (loading) {
     return (

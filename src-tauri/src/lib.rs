@@ -94,6 +94,7 @@ pub fn run() {
             let conn = sync::db::open(&db_path.to_string_lossy()).expect("failed to open sync DB");
             let db_arc = Arc::new(SyncDb {
                 conn: std::sync::Mutex::new(conn),
+                syncing: std::sync::atomic::AtomicBool::new(false),
             });
             app.manage(db_arc.clone());
 
@@ -106,9 +107,9 @@ pub fn run() {
                     use tauri::Emitter;
                     let _ = app_handle.emit("sync:updated", ());
                 }
-                // Background sync loop: every 30 seconds
+                // Background sync loop: every 10 seconds
                 loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                     sync::engine::run_sync_cycle(app_handle.clone(), db_arc.clone()).await;
                 }
             });

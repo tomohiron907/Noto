@@ -2,7 +2,7 @@ use anyhow::Result;
 use reqwest::Method;
 use serde::Deserialize;
 use serde_json::json;
-use std::sync::Mutex;
+use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 use tauri::{AppHandle, Emitter};
 
 use crate::drive::client::DriveClient;
@@ -22,6 +22,14 @@ fn is_md_file(mime: &str, name: &str) -> bool {
 
 pub struct SyncDb {
     pub conn: Mutex<rusqlite::Connection>,
+    pub syncing: AtomicBool,
+}
+
+struct SyncGuard<'a>(&'a AtomicBool);
+impl<'a> Drop for SyncGuard<'a> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 // ── Full initial import ───────────────────────────────────────────────────────
@@ -165,7 +173,7 @@ async fn import_notes_metadata(
             }
             let parent_drive_id = f.parents.as_ref().and_then(|p| p.first()).map(|s| s.as_str());
             let title = f.name.trim_end_matches(".md");
-            db::upsert_note_by_drive_id(&conn, &f.id, title, parent_drive_id, &f.modified_time)?;
+            db::upsert_note_by_drive_id(&conn, &f.id, title, parent_drive_id, &f.modified_time).map(|_| ())?;
         }
     }
     Ok(())
@@ -332,14 +340,14 @@ pub async fn push_dirty(app: &AppHandle, db_state: &SyncDb) -> Result<usize> {
 
 // ── Pull changes from Drive ───────────────────────────────────────────────────
 
-pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<bool> {
+pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<(bool, Vec<String>)> {
     let page_token = {
         let conn = db_state.conn.lock().unwrap();
         db::get_sync_state(&conn, "changes_page_token")?
     };
 
     let Some(mut token) = page_token else {
-        return Ok(false);
+        return Ok((false, vec![]));
     };
 
     let client = DriveClient::new(app).await?;
@@ -372,6 +380,7 @@ pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<bool> {
     }
 
     let mut had_changes = false;
+    let mut updated_note_ids: Vec<String> = Vec::new();
 
     loop {
         let url = format!(
@@ -381,12 +390,14 @@ pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<bool> {
             FIELDS
         );
         let resp: ChangesResp = client.get(&url).await?.json().await?;
+        log::info!("[pull_changes] page token={token}, changes_count={}", resp.changes.len());
 
         for change in resp.changes {
             let Some(file) = change.file else { continue };
 
             let removed = change.removed.unwrap_or(false) || file.trashed.unwrap_or(false);
             let mime = file.mime_type.as_deref().unwrap_or("");
+            log::info!("[pull_changes] change: id={} name={:?} mime={} removed={}", file.id, file.name, mime, removed);
 
             if mime == FOLDER_MIME {
                 // Folder change
@@ -443,20 +454,41 @@ pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<bool> {
                         })
                         .unwrap_or(false);
 
+                    log::info!("[pull_changes] note {} is_ours={}", file.id, is_ours);
                     if is_ours {
                         let parent_drive_id =
                             file.parents.as_ref().and_then(|p| p.first()).map(|s| s.as_str());
                         let title = name.trim_end_matches(".md");
-                        let conn = db_state.conn.lock().unwrap();
-                        db::upsert_note_by_drive_id(
-                            &conn,
-                            &file.id,
-                            title,
-                            parent_drive_id,
-                            modified_time,
-                        )?;
-                        db::resolve_note_parent_local_ids(&conn)?;
+                        let (local_id, was_updated) = {
+                            let conn = db_state.conn.lock().unwrap();
+                            let result = db::upsert_note_by_drive_id(
+                                &conn,
+                                &file.id,
+                                title,
+                                parent_drive_id,
+                                modified_time,
+                            )?;
+                            db::resolve_note_parent_local_ids(&conn)?;
+                            result
+                        };
                         had_changes = true;
+                        log::info!("[pull_changes] upsert note drive_id={} local_id={} was_updated={}", file.id, local_id, was_updated);
+                        if was_updated {
+                            // Pre-fetch content now so refreshActiveNote returns from DB cache instantly
+                            let content_url = format!("{}/{}?alt=media", DRIVE_FILES_API, file.id);
+                            match client.get(&content_url).await {
+                                Ok(resp) => match resp.text().await {
+                                    Ok(content) => {
+                                        let conn = db_state.conn.lock().unwrap();
+                                        let _ = db::set_note_content(&conn, &local_id, &content);
+                                        log::info!("[pull_changes] pre-cached content for local_id={}", local_id);
+                                    }
+                                    Err(e) => log::warn!("[pull_changes] pre-fetch text failed for {}: {}", local_id, e),
+                                },
+                                Err(e) => log::warn!("[pull_changes] pre-fetch request failed for {}: {}", local_id, e),
+                            }
+                            updated_note_ids.push(local_id);
+                        }
                     }
                 }
             }
@@ -473,7 +505,7 @@ pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<bool> {
         }
     }
 
-    Ok(had_changes)
+    Ok((had_changes, updated_note_ids))
 }
 
 // ── Fetch note content from Drive ─────────────────────────────────────────────
@@ -541,6 +573,11 @@ pub async fn move_note_on_drive(
 // ── Background sync loop ──────────────────────────────────────────────────────
 
 pub async fn run_sync_cycle(app: AppHandle, db_state: std::sync::Arc<SyncDb>) {
+    if db_state.syncing.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _guard = SyncGuard(&db_state.syncing);
+
     let _ = app.emit("sync:start", ());
 
     let push_result = push_dirty(&app, &db_state).await;
@@ -549,11 +586,16 @@ pub async fn run_sync_cycle(app: AppHandle, db_state: std::sync::Arc<SyncDb>) {
     }
 
     match pull_changes(&app, &db_state).await {
-        Ok(had_changes) => {
+        Ok((had_changes, updated_note_ids)) => {
             {
                 let conn = db_state.conn.lock().unwrap();
                 let ts = db::now_ms();
                 let _ = db::set_sync_state(&conn, "last_sync_at", &ts.to_string());
+            }
+            log::info!("[sync] pull done: had_changes={} updated_note_ids={:?}", had_changes, updated_note_ids);
+            if !updated_note_ids.is_empty() {
+                log::info!("[sync] emitting sync:notes_updated with {:?}", updated_note_ids);
+                let _ = app.emit("sync:notes_updated", updated_note_ids);
             }
             if had_changes || push_result.map(|n| n > 0).unwrap_or(false) {
                 let _ = app.emit("sync:updated", ());

@@ -161,13 +161,16 @@ pub fn get_all_folders(conn: &Connection) -> Result<Vec<LocalFolder>> {
 
 // ── note helpers ──────────────────────────────────────────────────────────────
 
+/// Returns `(local_id, was_content_reset)`.
+/// `was_content_reset` is true when an existing note was updated from Drive
+/// (content_fetched reset to 0), indicating the frontend should refresh it.
 pub fn upsert_note_by_drive_id(
     conn: &Connection,
     drive_id: &str,
     title: &str,
     parent_drive_id: Option<&str>,
     drive_modified_at: &str,
-) -> Result<String> {
+) -> Result<(String, bool)> {
     let existing: Option<(String, Option<String>)> = conn
         .query_row(
             "SELECT local_id, drive_modified_at FROM notes WHERE drive_id = ?1",
@@ -195,7 +198,7 @@ pub fn upsert_note_by_drive_id(
                 params![title, parent_drive_id, drive_modified_at, local_id],
             )?;
         }
-        return Ok(local_id);
+        return Ok((local_id, should_update));
     }
 
     let local_id = uuid::Uuid::new_v4().to_string();
@@ -213,7 +216,7 @@ pub fn upsert_note_by_drive_id(
             drive_modified_at
         ],
     )?;
-    Ok(local_id)
+    Ok((local_id, false))
 }
 
 pub fn resolve_note_parent_local_ids(conn: &Connection) -> Result<()> {

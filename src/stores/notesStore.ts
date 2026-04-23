@@ -25,6 +25,7 @@ interface NotesState {
   moveNote: (noteId: string, oldParentId: string, newParentId: string) => Promise<void>;
   markDirty: (content: string) => void;
   setActiveTitle: (title: string) => void;
+  refreshActiveNote: () => Promise<void>;
 }
 
 export const useNotesStore = create<NotesState>()(
@@ -122,6 +123,7 @@ export const useNotesStore = create<NotesState>()(
           const idx = s.notes.findIndex((n) => n.id === activeId);
           if (idx !== -1) s.notes[idx] = updated;
         });
+        tauriSync.trigger().catch(() => {});
       } catch (e) {
         set((s) => {
           s.error = String(e);
@@ -197,6 +199,22 @@ export const useNotesStore = create<NotesState>()(
         s.activeTitle = title;
         s.dirty = true;
       });
+    },
+
+    refreshActiveNote: async () => {
+      const { activeId, dirty } = get();
+      console.log("[refreshActiveNote] called activeId=", activeId, "dirty=", dirty);
+      if (!activeId || dirty) return;
+      try {
+        const content = await tauriSync.readNote(activeId);
+        console.log("[refreshActiveNote] fetched content length=", content.length, "preview=", content.slice(0, 80));
+        set((s) => {
+          if (s.activeId !== activeId || s.dirty) return;
+          s.activeContent = content;
+        });
+      } catch (e) {
+        console.error("[refreshActiveNote]", e);
+      }
     },
   }))
 );
