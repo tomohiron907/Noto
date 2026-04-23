@@ -23,6 +23,7 @@ fn is_md_file(mime: &str, name: &str) -> bool {
 pub struct SyncDb {
     pub conn: Mutex<rusqlite::Connection>,
     pub syncing: AtomicBool,
+    pub http: reqwest::Client,
 }
 
 struct SyncGuard<'a>(&'a AtomicBool);
@@ -35,7 +36,7 @@ impl<'a> Drop for SyncGuard<'a> {
 // ── Full initial import ───────────────────────────────────────────────────────
 
 pub async fn initial_import(app: &AppHandle, db_state: &SyncDb) -> Result<()> {
-    let client = DriveClient::new(app).await?;
+    let client = DriveClient::with_http(db_state.http.clone(), app).await?;
     let root_drive_id = ensure_root_folder(&client).await?;
 
     // Insert root folder first so note parent resolution works correctly
@@ -231,7 +232,7 @@ async fn acquire_start_page_token(client: &DriveClient, db_state: &SyncDb) -> Re
 
 // ── Push dirty notes to Drive ─────────────────────────────────────────────────
 
-pub async fn push_dirty(app: &AppHandle, db_state: &SyncDb) -> Result<usize> {
+pub async fn push_dirty(client: &DriveClient, db_state: &SyncDb) -> Result<usize> {
     let dirty_notes = {
         let conn = db_state.conn.lock().unwrap();
         db::get_dirty_notes(&conn)?
@@ -241,7 +242,6 @@ pub async fn push_dirty(app: &AppHandle, db_state: &SyncDb) -> Result<usize> {
         return Ok(0);
     }
 
-    let client = DriveClient::new(app).await?;
     let mut pushed = 0;
 
     for note in dirty_notes {
@@ -340,7 +340,7 @@ pub async fn push_dirty(app: &AppHandle, db_state: &SyncDb) -> Result<usize> {
 
 // ── Pull changes from Drive ───────────────────────────────────────────────────
 
-pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<(bool, Vec<String>)> {
+pub async fn pull_changes(client: &DriveClient, db_state: &SyncDb) -> Result<(bool, Vec<String>)> {
     let page_token = {
         let conn = db_state.conn.lock().unwrap();
         db::get_sync_state(&conn, "changes_page_token")?
@@ -350,7 +350,6 @@ pub async fn pull_changes(app: &AppHandle, db_state: &SyncDb) -> Result<(bool, V
         return Ok((false, vec![]));
     };
 
-    let client = DriveClient::new(app).await?;
     let root_drive_id = {
         let conn = db_state.conn.lock().unwrap();
         db::get_sync_state(&conn, "root_drive_id")?.unwrap_or_default()
@@ -516,7 +515,7 @@ pub async fn fetch_note_content(
     local_id: &str,
     drive_id: &str,
 ) -> Result<String> {
-    let client = DriveClient::new(app).await?;
+    let client = DriveClient::with_http(db_state.http.clone(), app).await?;
     let url = format!("{}/{}?alt=media", DRIVE_FILES_API, drive_id);
     let content = client.get(&url).await?.text().await?;
     let conn = db_state.conn.lock().unwrap();
@@ -533,7 +532,7 @@ pub async fn create_folder_on_drive(
     name: &str,
     parent_drive_id: &str,
 ) -> Result<String> {
-    let client = DriveClient::new(app).await?;
+    let client = DriveClient::with_http(db_state.http.clone(), app).await?;
     let body = json!({
         "name": name,
         "mimeType": FOLDER_MIME,
@@ -557,11 +556,12 @@ pub async fn create_folder_on_drive(
 
 pub async fn move_note_on_drive(
     app: &AppHandle,
+    http: reqwest::Client,
     note_drive_id: &str,
     old_parent_drive_id: &str,
     new_parent_drive_id: &str,
 ) -> Result<()> {
-    let client = DriveClient::new(app).await?;
+    let client = DriveClient::with_http(http, app).await?;
     let url = format!(
         "{}/{}?addParents={}&removeParents={}&fields=id",
         DRIVE_FILES_API, note_drive_id, new_parent_drive_id, old_parent_drive_id
@@ -580,12 +580,21 @@ pub async fn run_sync_cycle(app: AppHandle, db_state: std::sync::Arc<SyncDb>) {
 
     let _ = app.emit("sync:start", ());
 
-    let push_result = push_dirty(&app, &db_state).await;
+    let client = match DriveClient::with_http(db_state.http.clone(), &app).await {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("[sync] auth failed: {}", e);
+            let _ = app.emit("sync:error", e.to_string());
+            return;
+        }
+    };
+
+    let push_result = push_dirty(&client, &db_state).await;
     if let Err(e) = &push_result {
         log::warn!("[sync] push failed: {}", e);
     }
 
-    match pull_changes(&app, &db_state).await {
+    match pull_changes(&client, &db_state).await {
         Ok((had_changes, updated_note_ids)) => {
             {
                 let conn = db_state.conn.lock().unwrap();

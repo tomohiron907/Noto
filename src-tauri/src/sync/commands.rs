@@ -258,7 +258,7 @@ pub async fn sync_move_note(
     if let (Some(ndid), Some(opdid), Some(npdid)) =
         (&note_drive_id, &old_parent_drive_id, &new_parent_drive_id)
     {
-        let _ = engine::move_note_on_drive(&app, ndid, opdid, npdid)
+        let _ = engine::move_note_on_drive(&app, state.http.clone(), ndid, opdid, npdid)
             .await
             .map_err(|e| log::warn!("[move_note] Drive call failed: {}", e));
     }

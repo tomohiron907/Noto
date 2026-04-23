@@ -11,6 +11,10 @@ pub struct DriveClient {
 
 impl DriveClient {
     pub async fn new(app: &AppHandle) -> Result<Self> {
+        Self::with_http(Client::new(), app).await
+    }
+
+    pub async fn with_http(http: Client, app: &AppHandle) -> Result<Self> {
         let mut tokens = token_store::load(app)?.ok_or_else(|| anyhow!("Not authenticated"))?;
 
         let now = chrono::Utc::now().timestamp();
@@ -24,7 +28,7 @@ impl DriveClient {
         }
 
         Ok(Self {
-            http: Client::new(),
+            http,
             access_token: tokens.access_token,
         })
     }

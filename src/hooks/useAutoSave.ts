@@ -10,7 +10,7 @@ export function useAutoSave() {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       saveNote(activeContent);
-    }, 1500);
+    }, 600);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
