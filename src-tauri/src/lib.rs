@@ -2,7 +2,8 @@ pub mod auth;
 pub mod drive;
 pub mod sync;
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use tauri::Manager;
 
@@ -12,6 +13,22 @@ use sync::commands::{
     sync_list_tree, sync_move_note, sync_read_note, sync_trigger, sync_write_note,
 };
 use sync::engine::SyncDb;
+
+// Maps note_id -> window_label for all open windows
+struct WindowNoteState(Mutex<HashMap<String, String>>);
+
+#[tauri::command]
+fn set_window_note(
+    window: tauri::WebviewWindow,
+    state: tauri::State<WindowNoteState>,
+    note_id: String,
+) {
+    let mut map = state.0.lock().unwrap();
+    map.retain(|_, label| label != window.label());
+    if !note_id.is_empty() {
+        map.insert(note_id, window.label().to_string());
+    }
+}
 
 #[cfg(target_os = "macos")]
 #[tauri::command]
@@ -40,6 +57,67 @@ fn set_traffic_lights(window: tauri::WebviewWindow, visible: bool) {
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 fn set_traffic_lights(_window: tauri::WebviewWindow, _visible: bool) {}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn open_note_window(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WindowNoteState>,
+    note_id: String,
+    note_title: String,
+) -> Result<(), String> {
+    use tauri::window::{Effect, EffectState, EffectsBuilder};
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+
+    let label = format!("note-{}", note_id);
+
+    if let Some(existing) = app.get_webview_window(&label) {
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    // Check if any other window (e.g. main) already has this note open
+    let maybe_label = {
+        let map = state.0.lock().unwrap();
+        map.get(&note_id).cloned()
+    };
+    if let Some(window_label) = maybe_label {
+        if let Some(existing) = app.get_webview_window(&window_label) {
+            existing.set_focus().map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
+
+    let url = format!("/?noteId={}", urlencoding::encode(&note_id));
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title(&note_title)
+        .inner_size(900.0, 700.0)
+        .min_inner_size(600.0, 400.0)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .transparent(true)
+        .effects(
+            EffectsBuilder::new()
+                .effect(Effect::Sidebar)
+                .state(EffectState::Active)
+                .build(),
+        )
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+async fn open_note_window(
+    _app: tauri::AppHandle,
+    _state: tauri::State<'_, WindowNoteState>,
+    _note_id: String,
+    _note_title: String,
+) -> Result<(), String> {
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -84,6 +162,8 @@ pub fn run() {
                 )
                 .expect("apply_vibrancy failed");
             }
+
+            app.manage(WindowNoteState(Mutex::new(HashMap::new())));
 
             // Initialize SQLite sync DB
             let db_path = app
@@ -132,6 +212,8 @@ pub fn run() {
             sync_trigger,
             sync_get_status,
             set_traffic_lights,
+            open_note_window,
+            set_window_note,
         ]);
 
     #[cfg(not(mobile))]

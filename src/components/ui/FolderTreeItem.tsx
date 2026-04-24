@@ -78,6 +78,7 @@ interface Props {
   onCancelCreate: () => void;
   onCreatingNameChange: (v: string) => void;
   onNotePointerDown?: (noteId: string, e: React.PointerEvent) => void;
+  onNoteOpenInWindow?: (id: string, title: string) => void;
   dragOverFolderId?: string | null;
 }
 
@@ -99,6 +100,7 @@ export default function FolderTreeItem({
   onCancelCreate,
   onCreatingNameChange,
   onNotePointerDown,
+  onNoteOpenInWindow,
   dragOverFolderId,
 }: Props) {
   const [expanded, setExpanded] = useState(true);
@@ -131,6 +133,7 @@ export default function FolderTreeItem({
     onCancelCreate,
     onCreatingNameChange,
     onNotePointerDown,
+    onNoteOpenInWindow,
     dragOverFolderId,
   };
 
@@ -250,6 +253,7 @@ export default function FolderTreeItem({
               onClick={() => onNoteClick(note.id)}
               onDelete={() => onNoteDelete(note.id)}
               onPointerDown={onNotePointerDown}
+              onOpenInWindow={onNoteOpenInWindow ? () => onNoteOpenInWindow(note.id, note.title) : undefined}
             />
           ))}
         </div>

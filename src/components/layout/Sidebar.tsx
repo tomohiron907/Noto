@@ -10,6 +10,7 @@ import {
 import clsx from "clsx";
 import { useNotesStore } from "../../stores/notesStore";
 import { useAuthStore } from "../../stores/authStore";
+import { tauriWindow } from "../../lib/tauri";
 import FileTreeItem from "../ui/FileTreeItem";
 import FolderTreeItem, {
   InlineCreateInput,
@@ -18,6 +19,7 @@ import FolderTreeItem, {
 
 const LAST_NOTE_KEY = "noto_last_note_id";
 const isDesktop = !("ontouchstart" in window || navigator.maxTouchPoints > 0);
+const isNoteWindow = !!new URLSearchParams(window.location.search).get("noteId");
 
 interface SidebarProps {
   onClose?: () => void;
@@ -61,6 +63,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   useEffect(() => {
     loadTree().then(() => {
+      if (isNoteWindow) return; // note windowではApp.tsxが担当
       const lastId = localStorage.getItem(LAST_NOTE_KEY);
       if (lastId) {
         const exists = useNotesStore.getState().notes.find((n) => n.id === lastId);
@@ -216,6 +219,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     creating,
     creatingName,
     onNoteClick: (id: string) => { openNote(id); onClose?.(); },
+    onNoteOpenInWindow: isDesktop ? (id: string, title: string) => tauriWindow.openNoteWindow(id, title).catch(() => {}) : undefined,
     onNoteDelete: (id: string) => deleteNote(id),
     onFolderDelete: (id: string) => deleteFolder(id),
     onFolderActivate: (id: string) => setActiveFolderId(id),
@@ -322,6 +326,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 level={0}
                 onClick={() => { openNote(note.id); onClose?.(); }}
                 onDelete={() => deleteNote(note.id)}
+                onOpenInWindow={isDesktop ? () => tauriWindow.openNoteWindow(note.id, note.title).catch(() => {}) : undefined}
               />
             ))}
           </>
@@ -362,6 +367,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 onClick={() => { openNote(note.id); onClose?.(); }}
                 onDelete={() => deleteNote(note.id)}
                 onPointerDown={isDesktop ? handleNotePointerDown : undefined}
+                onOpenInWindow={isDesktop ? () => tauriWindow.openNoteWindow(note.id, note.title).catch(() => {}) : undefined}
               />
             ))}
 

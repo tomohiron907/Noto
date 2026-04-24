@@ -38,3 +38,10 @@ export const tauriSync = {
   trigger: () => invoke<void>("sync_trigger"),
   getStatus: () => invoke<SyncStatus>("sync_get_status"),
 };
+
+export const tauriWindow = {
+  openNoteWindow: (noteId: string, noteTitle: string) =>
+    invoke<void>("open_note_window", { noteId, noteTitle }),
+  setWindowNote: (noteId: string) =>
+    invoke<void>("set_window_note", { noteId }),
+};

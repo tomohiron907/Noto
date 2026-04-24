@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import { tauriSync } from "../lib/tauri";
+import { tauriSync, tauriWindow } from "../lib/tauri";
 import type { FolderMetadata, NoteMetadata } from "../lib/types";
 
 interface NotesState {
@@ -61,6 +61,8 @@ export const useNotesStore = create<NotesState>()(
     openNote: async (id: string) => {
       const { notes } = get();
       const note = notes.find((n) => n.id === id);
+
+      tauriWindow.setWindowNote(id).catch(() => {});
 
       set((s) => {
         s.activeId = id;

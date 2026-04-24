@@ -1,14 +1,17 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAuthStore } from "./stores/authStore";
 import { useNotesStore } from "./stores/notesStore";
 import AuthScreen from "./components/auth/AuthScreen";
 import AppShell from "./components/layout/AppShell";
 
+const NOTE_WINDOW_ID = new URLSearchParams(window.location.search).get("noteId");
+
 export default function App() {
   const { user, loading, restoreSession } = useAuthStore();
-  const { createNote, activeId, deleteNote, loadTree, refreshActiveNote } = useNotesStore();
+  const { createNote, activeId, activeTitle, deleteNote, loadTree, refreshActiveNote } = useNotesStore();
 
   // Respect system dark/light mode
   useEffect(() => {
@@ -37,6 +40,22 @@ export default function App() {
   useEffect(() => {
     restoreSession();
   }, [restoreSession]);
+
+  // note window: URLパラメータのノートを認証後に自動で開く
+  useEffect(() => {
+    if (!user || !NOTE_WINDOW_ID) return;
+    const { notes, loadTree: load, openNote } = useNotesStore.getState();
+    (async () => {
+      if (notes.length === 0) await load();
+      await openNote(NOTE_WINDOW_ID);
+    })();
+  }, [user]);
+
+  // note window: アクティブなノートタイトルに合わせてウィンドウタイトルを更新
+  useEffect(() => {
+    if (!NOTE_WINDOW_ID || !activeTitle) return;
+    getCurrentWindow().setTitle(activeTitle).catch(() => {});
+  }, [activeTitle]);
 
   // Trigger immediate sync when window regains focus or becomes visible
   useEffect(() => {

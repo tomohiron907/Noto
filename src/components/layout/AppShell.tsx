@@ -47,6 +47,7 @@ export default function AppShell() {
     setIsSidebarOpen(false);
     setSidebarTrigger("none");
     setTimeout(() => setTrafficLightsVisible(false), 200);
+    document.dispatchEvent(new Event("sidebar:closed"));
   };
 
   // Mac: open on left-edge hover, close when mouse returns to editor
