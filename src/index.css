@@ -170,10 +170,10 @@
 /* Horizontal rule */
 .tiptap hr {
   border: none;
-  border-top: 1px solid #e5e5e5;
-  margin: 1rem 0;
+  border-top: 2px solid rgba(55, 53, 47, 0.5);
+  margin: 1.5rem 0;
 }
-.dark .tiptap hr { border-top-color: #333; }
+.dark .tiptap hr { border-top-color: rgba(207, 207, 207, 0.5); }
 
 /* Highlight */
 .tiptap mark {
