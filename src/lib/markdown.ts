@@ -5,5 +5,5 @@ export const markdownExtension = Markdown.configure({
   tightLists: true,
   bulletListMarker: "-",
   transformPastedText: false,
-  transformCopiedText: false,
+  transformCopiedText: true,
 });
