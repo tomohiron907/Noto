@@ -142,9 +142,13 @@ export default function AppShell() {
     };
   }, []);
 
+  const shellBg = isTouchDevice
+    ? "bg-white dark:bg-black"
+    : "bg-transparent border border-white/20 rounded-[10px]";
+
   return (
     <div
-      className="flex h-screen overflow-hidden bg-transparent relative border border-white/20 rounded-[10px] box-border"
+      className={`flex h-screen overflow-hidden relative box-border ${shellBg}`}
       onMouseMove={handleMouseMove}
     >
       {/* Overlay when sidebar is opened by click/hamburger */}
@@ -165,7 +169,7 @@ export default function AppShell() {
         <Sidebar onClose={closeSidebar} />
       </div>
 
-      <main className="flex-1 overflow-hidden flex flex-col min-w-0 bg-transparent">
+      <main className={`flex-1 overflow-hidden flex flex-col min-w-0 ${isTouchDevice ? "" : "bg-transparent"}`}>
         {/* Header containing Drag region and Menu button */}
         <header
           className="shrink-0 relative w-full bg-transparent border-b border-gray-200/40 dark:border-gray-800/40 flex items-center z-30"

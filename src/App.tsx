@@ -23,6 +23,14 @@ export default function App() {
     return () => mq.removeEventListener("change", () => {});
   }, []);
 
+  // Mark iOS so CSS can apply solid backgrounds (no native window transparency on iOS)
+  useEffect(() => {
+    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    if (isTouch) {
+      document.documentElement.classList.add("ios");
+    }
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

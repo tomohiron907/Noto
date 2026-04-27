@@ -22,6 +22,12 @@
     @apply text-gray-100;
     background: transparent;
   }
+
+  /* iOS has no native window transparency — override with solid backgrounds */
+  html.ios, html.ios #root { background: #ffffff; }
+  html.ios body { background: #ffffff; }
+  html.ios.dark, html.ios.dark #root { background: #000000; }
+  html.ios.dark body { background: #000000; }
 }
 
 /* ─── TipTap / Notion-like editor ─── */
