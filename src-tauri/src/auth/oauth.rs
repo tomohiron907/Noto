@@ -39,7 +39,18 @@ async fn start_localhost_server() -> Result<(u16, tokio::sync::oneshot::Receiver
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
 
     tokio::spawn(async move {
-        if let Ok((stream, _)) = listener.accept().await {
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(120);
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let Ok(Ok((stream, _))) =
+                tokio::time::timeout(remaining, listener.accept()).await
+            else {
+                break;
+            };
+
             let stream = stream.into_std().unwrap();
             let mut stream_clone = stream.try_clone().unwrap();
 
@@ -60,22 +71,18 @@ async fn start_localhost_server() -> Result<(u16, tokio::sync::oneshot::Receiver
                     })
                 });
 
-            let html = if code.is_some() {
-                "<html><body><h2>✅ Noto — Signed in!</h2><p>You can close this tab.</p></body></html>"
-            } else {
-                "<html><body><h2>❌ Authentication failed.</h2><p>You can close this tab.</p></body></html>"
-            };
+            // favicon等のコードなしリクエストはスキップして次の接続を待つ
+            let Some(code) = code else { continue };
 
+            let html = "<html><body><h2>✅ Noto — Signed in!</h2><p>You can close this tab.</p></body></html>";
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 html.len(),
                 html
             );
             let _ = stream_clone.write_all(response.as_bytes());
-
-            if let Some(code) = code {
-                let _ = tx.send(code);
-            }
+            let _ = tx.send(code);
+            break;
         }
     });
 
@@ -109,8 +116,9 @@ pub async fn start_oauth_flow(app: &tauri::AppHandle) -> Result<(TokenSet, UserI
         .open_url(&auth_url, None::<&str>)
         .map_err(|e| anyhow!("Failed to open browser: {}", e))?;
 
-    let code = rx
+    let code = tokio::time::timeout(std::time::Duration::from_secs(125), rx)
         .await
+        .map_err(|_| anyhow!("ログインがタイムアウトしました。再度お試しください。"))?
         .map_err(|_| anyhow!("OAuth server closed before receiving code"))?;
 
     let tokens = exchange_code(&code, &verifier, &redirect_uri).await?;
