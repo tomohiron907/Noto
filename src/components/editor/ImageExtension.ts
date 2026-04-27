@@ -14,6 +14,11 @@ export const ResizableImage = Image.extend({
           return w ? parseInt(w, 10) : null;
         },
       },
+      uploadId: {
+        default: null,
+        renderHTML: () => ({}), // never written to HTML
+        parseHTML: () => null,
+      },
     };
   },
 

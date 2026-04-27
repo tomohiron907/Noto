@@ -32,35 +32,54 @@ const ITEMS: SlashItem[] = [
     description: "Insert image from file",
     icon: <ImageIcon size={15} />,
     action: (editor) => {
-      return new Promise<void>((resolve) => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = "image/*";
-        input.onchange = async () => {
-          const file = input.files?.[0];
-          if (!file) { resolve(); return; }
-          const { from } = editor.state.selection;
-          const reader = new FileReader();
-          reader.onload = async () => {
-            const base64 = (reader.result as string).split(",")[1];
-            if (!base64) { resolve(); return; }
-            try {
-              const driveId = await tauriAssets.upload(base64, file.type, file.name);
-              const node = editor.state.schema.nodes.image?.create({
-                src: `noto-asset://${driveId}`,
-              });
-              if (node) {
-                editor.view.dispatch(editor.state.tr.insert(from, node));
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+
+        const blobUrl = URL.createObjectURL(file);
+        const uploadId = `upload-${Date.now()}`;
+        const insertPos = editor.state.selection.from;
+
+        // Insert immediately with blob URL so the image shows right away
+        const node = editor.state.schema.nodes.image?.create({
+          src: blobUrl,
+          uploadId,
+        });
+        if (node) {
+          editor.view.dispatch(editor.state.tr.insert(insertPos, node));
+        }
+
+        // Upload in background, then swap src to noto-asset://
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(",")[1];
+          if (!base64) return;
+          try {
+            const driveId = await tauriAssets.upload(base64, file.type, file.name);
+            // Find the node by uploadId and update its src
+            editor.state.doc.descendants((n, pos) => {
+              if (n.type.name === "image" && n.attrs.uploadId === uploadId) {
+                editor.view.dispatch(
+                  editor.state.tr.setNodeMarkup(pos, undefined, {
+                    ...n.attrs,
+                    src: `noto-asset://${driveId}`,
+                    uploadId: null,
+                  }),
+                );
+                return false;
               }
-            } catch (e) {
-              console.error("Image upload failed", e);
-            }
-            resolve();
-          };
-          reader.readAsDataURL(file);
+            });
+            URL.revokeObjectURL(blobUrl);
+          } catch (e) {
+            console.error("Image upload failed", e);
+          }
         };
-        input.click();
-      });
+        reader.readAsDataURL(file);
+      };
+      input.click();
     },
   },
 ];
