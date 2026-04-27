@@ -274,12 +274,15 @@ pub fn run() {
             app.manage(WindowNoteState(Mutex::new(HashMap::new())));
 
             // Initialize SQLite sync DB
-            let db_path = app
+            let app_data_dir = app
                 .path()
                 .app_data_dir()
-                .expect("app data dir unavailable")
-                .join("noto.db");
-            let conn = sync::db::open(&db_path.to_string_lossy()).expect("failed to open sync DB");
+                .map_err(|e| format!("app data dir unavailable: {e}"))?;
+            std::fs::create_dir_all(&app_data_dir)
+                .map_err(|e| format!("failed to create app data dir: {e}"))?;
+            let db_path = app_data_dir.join("noto.db");
+            let conn = sync::db::open(&db_path.to_string_lossy())
+                .map_err(|e| format!("failed to open sync DB: {e}"))?;
             let db_arc = Arc::new(SyncDb {
                 conn: std::sync::Mutex::new(conn),
                 syncing: std::sync::atomic::AtomicBool::new(false),
