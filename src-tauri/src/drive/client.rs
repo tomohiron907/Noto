@@ -101,4 +101,37 @@ impl DriveClient {
             .await?
             .error_for_status()?)
     }
+
+    pub async fn multipart_upload_bytes(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+        metadata_json: &str,
+        bytes: Vec<u8>,
+        mime_type: &str,
+    ) -> Result<Response> {
+        let boundary = "noto_boundary_xyz";
+        let prefix = format!(
+            "--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{metadata_json}\r\n--{boundary}\r\nContent-Type: {mime_type}\r\n\r\n"
+        );
+        let suffix = format!("\r\n--{boundary}--");
+
+        let mut body = Vec::new();
+        body.extend_from_slice(prefix.as_bytes());
+        body.extend_from_slice(&bytes);
+        body.extend_from_slice(suffix.as_bytes());
+
+        Ok(self
+            .http
+            .request(method, url)
+            .bearer_auth(&self.access_token)
+            .header(
+                "Content-Type",
+                format!("multipart/related; boundary={}", boundary),
+            )
+            .body(body)
+            .send()
+            .await?
+            .error_for_status()?)
+    }
 }

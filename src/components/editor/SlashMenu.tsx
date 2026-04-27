@@ -3,15 +3,17 @@ import type { Editor } from "@tiptap/react";
 import {
   Heading1, Heading2, Heading3,
   List, ListOrdered, CheckSquare, Code2, Table as TableIcon, Minus,
-  Text,
+  Text, ImageIcon,
 } from "lucide-react";
 import clsx from "clsx";
+import { tauriAssets } from "../../lib/tauri";
 
 interface SlashItem {
   label: string;
   description: string;
   icon: React.ReactNode;
-  action: (editor: Editor) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  action: (editor: Editor) => any;
 }
 
 const ITEMS: SlashItem[] = [
@@ -25,6 +27,42 @@ const ITEMS: SlashItem[] = [
   { label: "Code Block", description: "Syntax-highlighted code", icon: <Code2 size={15} />, action: (e) => e.chain().focus().toggleCodeBlock().run() },
   { label: "Table", description: "3×3 table", icon: <TableIcon size={15} />, action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
   { label: "Divider", description: "Horizontal rule", icon: <Minus size={15} />, action: (e) => e.chain().focus().setHorizontalRule().run() },
+  {
+    label: "Image",
+    description: "Insert image from file",
+    icon: <ImageIcon size={15} />,
+    action: (editor) => {
+      return new Promise<void>((resolve) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.onchange = async () => {
+          const file = input.files?.[0];
+          if (!file) { resolve(); return; }
+          const { from } = editor.state.selection;
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = (reader.result as string).split(",")[1];
+            if (!base64) { resolve(); return; }
+            try {
+              const driveId = await tauriAssets.upload(base64, file.type, file.name);
+              const node = editor.state.schema.nodes.image?.create({
+                src: `noto-asset://${driveId}`,
+              });
+              if (node) {
+                editor.view.dispatch(editor.state.tr.insert(from, node));
+              }
+            } catch (e) {
+              console.error("Image upload failed", e);
+            }
+            resolve();
+          };
+          reader.readAsDataURL(file);
+        };
+        input.click();
+      });
+    },
+  },
 ];
 
 interface Props {

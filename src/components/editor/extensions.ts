@@ -3,7 +3,7 @@ import { BlockMath, InlineMath } from "@tiptap/extension-mathematics";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
-import Image from "@tiptap/extension-image";
+import { ResizableImage } from "./ImageExtension";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
@@ -65,7 +65,7 @@ export const extensions = [
   Underline,
   Highlight.configure({ multicolor: false }),
   Link.configure({ openOnClick: false, autolink: true }),
-  Image,
+  ResizableImage,
   TaskList,
   TaskItem.configure({ nested: true }),
   Table.configure({ resizable: true }),

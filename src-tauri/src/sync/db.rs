@@ -40,6 +40,12 @@ fn migrate(conn: &Connection) -> Result<()> {
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS asset_cache (
+            drive_id   TEXT PRIMARY KEY,
+            mime_type  TEXT NOT NULL DEFAULT 'image/png',
+            local_path TEXT NOT NULL,
+            cached_at  INTEGER NOT NULL
+        );
         ",
     )?;
     Ok(())

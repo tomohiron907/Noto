@@ -39,6 +39,11 @@ export const tauriSync = {
   getStatus: () => invoke<SyncStatus>("sync_get_status"),
 };
 
+export const tauriAssets = {
+  upload: (base64Data: string, mimeType: string, fileName: string) =>
+    invoke<string>("asset_upload", { base64Data, mimeType, fileName }),
+};
+
 export const tauriWindow = {
   openNoteWindow: (noteId: string, noteTitle: string) =>
     invoke<void>("open_note_window", { noteId, noteTitle }),

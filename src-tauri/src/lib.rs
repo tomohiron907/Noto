@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod auth;
 pub mod drive;
 pub mod sync;
@@ -7,6 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use tauri::Manager;
 
+use assets::commands::asset_upload;
 use auth::commands::{auth_restore, auth_sign_out, auth_start};
 use sync::commands::{
     sync_create_folder, sync_create_note, sync_delete_folder, sync_delete_note, sync_get_status,
@@ -135,6 +137,112 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .register_asynchronous_uri_scheme_protocol("noto-asset", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Manager;
+
+                let uri = request.uri().to_string();
+                // Extract drive_id from noto-asset://DRIVE_ID (strip ?w= and other params)
+                let drive_id = uri
+                    .strip_prefix("noto-asset://")
+                    .unwrap_or("")
+                    .split('?')
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+
+                macro_rules! respond_err {
+                    ($status:expr) => {{
+                        let _ = responder.respond(
+                            tauri::http::Response::builder()
+                                .status($status)
+                                .body(vec![])
+                                .unwrap(),
+                        );
+                        return;
+                    }};
+                }
+
+                if drive_id.is_empty() {
+                    respond_err!(400);
+                }
+
+                let cache_path = match app.path().app_data_dir() {
+                    Ok(d) => d.join("asset_cache").join(&drive_id),
+                    Err(_) => respond_err!(500),
+                };
+
+                let (bytes, mime_type) = if cache_path.exists() {
+                    let b = tokio::fs::read(&cache_path).await.unwrap_or_default();
+                    let db_arc = app.state::<Arc<SyncDb>>();
+                    let mime = {
+                        let conn = db_arc.conn.lock().unwrap();
+                        conn.query_row(
+                            "SELECT mime_type FROM asset_cache WHERE drive_id = ?1",
+                            rusqlite::params![drive_id],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .unwrap_or_else(|_| "image/png".to_string())
+                    };
+                    (b, mime)
+                } else {
+                    // Fetch from Drive
+                    let client = match crate::drive::client::DriveClient::new(&app).await {
+                        Ok(c) => c,
+                        Err(_) => respond_err!(401),
+                    };
+                    let url = format!(
+                        "https://www.googleapis.com/drive/v3/files/{}?alt=media",
+                        drive_id
+                    );
+                    let resp = match client.get(&url).await {
+                        Ok(r) => r,
+                        Err(_) => respond_err!(502),
+                    };
+                    let content_type = resp
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("image/png")
+                        .split(';')
+                        .next()
+                        .unwrap_or("image/png")
+                        .trim()
+                        .to_string();
+                    let b = match resp.bytes().await {
+                        Ok(b) => b.to_vec(),
+                        Err(_) => respond_err!(502),
+                    };
+                    if let Some(parent) = cache_path.parent() {
+                        let _ = tokio::fs::create_dir_all(parent).await;
+                    }
+                    let _ = tokio::fs::write(&cache_path, &b).await;
+                    let db_arc = app.state::<Arc<SyncDb>>();
+                    {
+                        let conn = db_arc.conn.lock().unwrap();
+                        let _ = conn.execute(
+                            "INSERT OR REPLACE INTO asset_cache (drive_id, mime_type, local_path, cached_at) VALUES (?1, ?2, ?3, ?4)",
+                            rusqlite::params![
+                                drive_id,
+                                content_type,
+                                cache_path.to_string_lossy().as_ref(),
+                                sync::db::now_ms()
+                            ],
+                        );
+                    }
+                    (b, content_type)
+                };
+
+                let _ = responder.respond(
+                    tauri::http::Response::builder()
+                        .header("Content-Type", mime_type)
+                        .header("Cache-Control", "max-age=86400")
+                        .body(bytes)
+                        .unwrap(),
+                );
+            });
+        })
         .setup(|app| {
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {
@@ -214,6 +322,7 @@ pub fn run() {
             set_traffic_lights,
             open_note_window,
             set_window_note,
+            asset_upload,
         ]);
 
     #[cfg(not(mobile))]
