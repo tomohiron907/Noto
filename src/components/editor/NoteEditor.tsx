@@ -65,7 +65,7 @@ export default function NoteEditor() {
       <BubbleMenuBar editor={editor} />
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[720px] mx-auto px-16 py-10">
+        <div className="w-full sm:max-w-[720px] mx-auto px-8 sm:px-16 py-6 sm:py-10">
           {/* Note title */}
           <textarea
             ref={titleRef}
