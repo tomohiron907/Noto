@@ -41,6 +41,7 @@ export default function AppShell() {
     setTrafficLightsVisible(true);
     setIsSidebarOpen(true);
     setSidebarTrigger(trigger);
+    invoke("sync_trigger").catch(() => {});
   };
 
   const closeSidebar = () => {

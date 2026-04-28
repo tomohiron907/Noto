@@ -65,15 +65,17 @@ export default function App() {
     getCurrentWindow().setTitle(activeTitle).catch(() => {});
   }, [activeTitle]);
 
-  // Trigger immediate sync when window regains focus or becomes visible
+  // Trigger immediate sync when window regains focus or becomes visible; also every 2 minutes
   useEffect(() => {
     const handler = () => invoke("sync_trigger").catch(() => {});
     const visibilityHandler = () => { if (!document.hidden) handler(); };
     window.addEventListener("focus", handler);
     document.addEventListener("visibilitychange", visibilityHandler);
+    const intervalId = setInterval(handler, 2 * 60 * 1000);
     return () => {
       window.removeEventListener("focus", handler);
       document.removeEventListener("visibilitychange", visibilityHandler);
+      clearInterval(intervalId);
     };
   }, []);
 

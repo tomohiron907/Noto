@@ -113,7 +113,7 @@ pub fn resolve_folder_parent_local_ids(conn: &Connection) -> Result<()> {
     let pairs: Vec<(String, String)> = {
         let mut stmt = conn.prepare(
             "SELECT local_id, parent_drive_id FROM folders
-             WHERE parent_drive_id IS NOT NULL AND parent_local_id IS NULL",
+             WHERE parent_drive_id IS NOT NULL AND deleted = 0",
         )?;
         let result = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<std::result::Result<_, _>>()?;
@@ -186,25 +186,33 @@ pub fn upsert_note_by_drive_id(
         .ok();
 
     if let Some((local_id, existing_modified)) = existing {
-        // Only update if Drive has a newer version and note is not dirty
         let dirty: i64 = conn.query_row(
             "SELECT dirty FROM notes WHERE local_id = ?1",
             params![local_id],
             |r| r.get(0),
         )?;
-        let should_update = dirty == 0
-            && existing_modified
+        if dirty == 0 {
+            let content_changed = existing_modified
                 .as_deref()
                 .map(|e| e < drive_modified_at)
                 .unwrap_or(true);
-        if should_update {
-            conn.execute(
-                "UPDATE notes SET title=?1, parent_drive_id=?2, drive_modified_at=?3,
-                  content_fetched=0 WHERE local_id=?4",
-                params![title, parent_drive_id, drive_modified_at, local_id],
-            )?;
+            if content_changed {
+                // Title, parent, modifiedTime, and content cache all updated
+                conn.execute(
+                    "UPDATE notes SET title=?1, parent_drive_id=?2, drive_modified_at=?3,
+                      content_fetched=0 WHERE local_id=?4",
+                    params![title, parent_drive_id, drive_modified_at, local_id],
+                )?;
+            } else {
+                // Move-only (modifiedTime unchanged): update title and parent only
+                conn.execute(
+                    "UPDATE notes SET title=?1, parent_drive_id=?2 WHERE local_id=?3",
+                    params![title, parent_drive_id, local_id],
+                )?;
+            }
+            return Ok((local_id, content_changed));
         }
-        return Ok((local_id, should_update));
+        return Ok((local_id, false));
     }
 
     let local_id = uuid::Uuid::new_v4().to_string();
@@ -229,7 +237,7 @@ pub fn resolve_note_parent_local_ids(conn: &Connection) -> Result<()> {
     let pairs: Vec<(String, String)> = {
         let mut stmt = conn.prepare(
             "SELECT local_id, parent_drive_id FROM notes
-             WHERE parent_drive_id IS NOT NULL AND parent_local_id IS NULL",
+             WHERE parent_drive_id IS NOT NULL AND dirty = 0",
         )?;
         let result = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<std::result::Result<_, _>>()?;
