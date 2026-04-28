@@ -267,6 +267,16 @@ pub async fn sync_move_note(
 }
 
 #[tauri::command]
+pub async fn sync_move_folder(
+    state: State<'_, Arc<SyncDb>>,
+    local_id: String,
+    new_parent_local_id: String,
+) -> Result<(), String> {
+    let conn = state.conn.lock().unwrap();
+    db::move_folder(&conn, &local_id, &new_parent_local_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn sync_trigger(
     app: AppHandle,
     state: State<'_, Arc<SyncDb>>,

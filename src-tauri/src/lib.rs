@@ -12,7 +12,7 @@ use assets::commands::asset_upload;
 use auth::commands::{auth_restore, auth_sign_out, auth_start};
 use sync::commands::{
     sync_create_folder, sync_create_note, sync_delete_folder, sync_delete_note, sync_get_status,
-    sync_list_tree, sync_move_note, sync_read_note, sync_trigger, sync_write_note,
+    sync_list_tree, sync_move_folder, sync_move_note, sync_read_note, sync_trigger, sync_write_note,
 };
 use sync::engine::SyncDb;
 
@@ -320,6 +320,7 @@ pub fn run() {
             sync_create_folder,
             sync_delete_folder,
             sync_move_note,
+            sync_move_folder,
             sync_trigger,
             sync_get_status,
             set_traffic_lights,

@@ -2,24 +2,84 @@ import { useEffect, useRef, useState } from "react";
 import {
   FilePlus,
   FileText,
+  Folder,
   FolderPlus,
   LogOut,
   Search,
   X,
 } from "lucide-react";
 import clsx from "clsx";
+import { Tree } from "react-arborist";
+import type { MoveHandler } from "react-arborist";
 import { useNotesStore } from "../../stores/notesStore";
 import { useAuthStore } from "../../stores/authStore";
 import { tauriWindow } from "../../lib/tauri";
-import FileTreeItem from "../ui/FileTreeItem";
-import FolderTreeItem, {
-  InlineCreateInput,
-  type CreatingState,
-} from "../ui/FolderTreeItem";
+import ArboristNode, { type TreeNode } from "../ui/ArboristNode";
+import type { FolderMetadata, NoteMetadata } from "../../lib/types";
 
 const LAST_NOTE_KEY = "noto_last_note_id";
 const isDesktop = !("ontouchstart" in window || navigator.maxTouchPoints > 0);
 const isNoteWindow = !!new URLSearchParams(window.location.search).get("noteId");
+
+type CreatingState = { type: "file" | "folder"; parentId: string } | null;
+
+function buildArboristTree(
+  folders: FolderMetadata[],
+  notes: NoteMetadata[],
+  parentId: string
+): TreeNode[] {
+  const childFolders = folders.filter((f) => f.parent_id === parentId);
+  const childNotes = notes.filter((n) => n.parent_id === parentId);
+  return [
+    ...childFolders.map((f) => ({
+      id: `f:${f.id}`,
+      name: f.name,
+      children: buildArboristTree(folders, notes, f.id),
+    })),
+    ...childNotes.map((n) => ({
+      id: `n:${n.id}`,
+      name: n.title || "Untitled",
+    })),
+  ];
+}
+
+function InlineCreateInput({
+  type,
+  value,
+  onChange,
+  onConfirm,
+  onCancel,
+}: {
+  type: "file" | "folder";
+  value: string;
+  onChange: (v: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  return (
+    <div className="flex items-center gap-1.5 py-0.5 px-2 mb-1">
+      {type === "folder" ? (
+        <Folder size={13} className="shrink-0 text-gray-400" />
+      ) : (
+        <FileText size={13} className="shrink-0 text-gray-400" />
+      )}
+      <input
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); onConfirm(); }
+          if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+        }}
+        onBlur={onConfirm}
+        className="flex-1 text-sm bg-transparent outline-none border-b border-neutral-400 text-gray-700 dark:text-gray-200 min-w-0"
+        placeholder={type === "folder" ? "Folder name…" : "Note name…"}
+      />
+    </div>
+  );
+}
 
 interface SidebarProps {
   onClose?: () => void;
@@ -37,33 +97,23 @@ export default function Sidebar({ onClose }: SidebarProps) {
     createFolder,
     deleteNote,
     deleteFolder,
+    moveNote,
+    moveFolder,
     syncing,
     error,
   } = useNotesStore();
   const { user, signOut } = useAuthStore();
 
   const [query, setQuery] = useState("");
-  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [creating, setCreating] = useState<CreatingState>(null);
   const [creatingName, setCreatingName] = useState("");
-
-  // Pointer drag state
-  const pointerDragRef = useRef<{
-    noteId: string;
-    startX: number;
-    startY: number;
-    dragging: boolean;
-  } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragGhost, setDragGhost] = useState<{ x: number; y: number; title: string } | null>(null);
-  const [hoverFolderId, setHoverFolderId] = useState<string | null>(null);
-  const [hoverRoot, setHoverRoot] = useState(false);
-
   const cancelledRef = useRef(false);
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const [treeDims, setTreeDims] = useState({ width: 200, height: 400 });
 
   useEffect(() => {
     loadTree().then(() => {
-      if (isNoteWindow) return; // note windowではApp.tsxが担当
+      if (isNoteWindow) return;
       const lastId = localStorage.getItem(LAST_NOTE_KEY);
       if (lastId) {
         const exists = useNotesStore.getState().notes.find((n) => n.id === lastId);
@@ -76,101 +126,20 @@ export default function Sidebar({ onClose }: SidebarProps) {
     if (activeId) localStorage.setItem(LAST_NOTE_KEY, activeId);
   }, [activeId]);
 
-  // ── Global pointer event listeners ────────────────────────────────────────
-
   useEffect(() => {
-    if (!isDesktop) return;
-
-    const onPointerMove = (e: PointerEvent) => {
-      const drag = pointerDragRef.current;
-      if (!drag) return;
-
-      const dx = e.clientX - drag.startX;
-      const dy = e.clientY - drag.startY;
-
-      if (!drag.dragging) {
-        if (Math.hypot(dx, dy) < 5) return;
-        drag.dragging = true;
-        setIsDragging(true);
-        const note = useNotesStore.getState().notes.find((n) => n.id === drag.noteId);
-        setDragGhost({ x: e.clientX, y: e.clientY, title: note?.title ?? "Note" });
-      } else {
-        setDragGhost((prev) => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
-      }
-
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      const folderEl = el?.closest("[data-folder-id]");
-      const rootEl = el?.closest("[data-root-drop]");
-      setHoverFolderId(folderEl?.getAttribute("data-folder-id") ?? null);
-      setHoverRoot(!!rootEl);
-    };
-
-    const onPointerUp = (e: PointerEvent) => {
-      const drag = pointerDragRef.current;
-      pointerDragRef.current = null;
-      setIsDragging(false);
-      setDragGhost(null);
-      setHoverFolderId(null);
-      setHoverRoot(false);
-
-      if (!drag?.dragging) return;
-
-      const { notes: currentNotes, rootFolderId: rootId, moveNote } = useNotesStore.getState();
-      const note = currentNotes.find((n) => n.id === drag.noteId);
-      if (!note) return;
-
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      if (el) {
-        const folderEl = el.closest("[data-folder-id]");
-        if (folderEl) {
-          const folderId = folderEl.getAttribute("data-folder-id");
-          if (folderId && folderId !== note.parent_id) {
-            moveNote(drag.noteId, note.parent_id, folderId);
-          }
-          return;
-        }
-        const rootEl = el.closest("[data-root-drop]");
-        if (rootEl && rootId && note.parent_id !== rootId) {
-          moveNote(drag.noteId, note.parent_id, rootId);
-        }
-      }
-    };
-
-    const onPointerCancel = () => {
-      pointerDragRef.current = null;
-      setIsDragging(false);
-      setDragGhost(null);
-      setHoverFolderId(null);
-      setHoverRoot(false);
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerCancel);
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerCancel);
-    };
+    const el = treeContainerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([entry]) => {
+      setTreeDims({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
   }, []);
 
-  // ── Note pointer down ─────────────────────────────────────────────────────
-
-  const handleNotePointerDown = (noteId: string, e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    pointerDragRef.current = {
-      noteId,
-      startX: e.clientX,
-      startY: e.clientY,
-      dragging: false,
-    };
-  };
-
-  // ── Creation helpers ──────────────────────────────────────────────────────
-
-  const startCreating = (type: "file" | "folder", parentId: string | null) => {
-    if (!parentId) return;
+  const startCreating = (type: "file" | "folder", parentId: string) => {
     setCreating({ type, parentId });
     setCreatingName("");
     cancelledRef.current = false;
@@ -185,12 +154,10 @@ export default function Sidebar({ onClose }: SidebarProps) {
     if (!name || !current) return;
 
     if (current.type === "folder") {
-      const parentArg =
-        current.parentId === rootFolderId ? undefined : current.parentId;
+      const parentArg = current.parentId === rootFolderId ? undefined : current.parentId;
       await createFolder(name, parentArg);
     } else {
-      const parentArg =
-        current.parentId === rootFolderId ? undefined : current.parentId;
+      const parentArg = current.parentId === rootFolderId ? undefined : current.parentId;
       await createNote(parentArg, name);
       onClose?.();
     }
@@ -202,42 +169,30 @@ export default function Sidebar({ onClose }: SidebarProps) {
     setCreatingName("");
   };
 
-  // ── Derived data ──────────────────────────────────────────────────────────
+  const handleMove: MoveHandler<TreeNode> = ({ dragIds, parentId }) => {
+    const newParentLocalId = parentId ? parentId.slice(2) : rootFolderId!;
+    for (const dragId of dragIds) {
+      const localId = dragId.slice(2);
+      if (dragId.startsWith("f:")) {
+        moveFolder(localId, newParentLocalId);
+      } else {
+        moveNote(localId, "", newParentLocalId);
+      }
+    }
+  };
+
+  const treeData = rootFolderId
+    ? buildArboristTree(folders, notes, rootFolderId)
+    : [];
 
   const filtered = notes.filter((n) =>
     n.title.toLowerCase().includes(query.toLowerCase())
   );
 
-  const rootFolders = folders.filter((f) => f.parent_id === rootFolderId);
-  const rootNotes = notes.filter((n) => n.parent_id === rootFolderId);
-
-  const sharedFolderProps = {
-    allFolders: folders,
-    allNotes: notes,
-    activeNoteId: activeId,
-    activeFolderId,
-    creating,
-    creatingName,
-    onNoteClick: (id: string) => { openNote(id); onClose?.(); },
-    onNoteOpenInWindow: isDesktop ? (id: string, title: string) => tauriWindow.openNoteWindow(id, title).catch(() => {}) : undefined,
-    onNoteDelete: (id: string) => deleteNote(id),
-    onFolderDelete: (id: string) => deleteFolder(id),
-    onFolderActivate: (id: string) => setActiveFolderId(id),
-    onStartCreating: startCreating,
-    onConfirmCreate: confirmCreate,
-    onCancelCreate: cancelCreate,
-    onCreatingNameChange: setCreatingName,
-    onNotePointerDown: isDesktop ? handleNotePointerDown : undefined,
-    dragOverFolderId: hoverFolderId,
-  };
-
-  const targetFolderForNew = activeFolderId ?? rootFolderId;
-
   return (
     <aside
       className="flex flex-col h-full bg-white dark:bg-neutral-800 border-r border-neutral-200 dark:border-neutral-700"
       style={{ width: "var(--sidebar-width)", flexShrink: 0 }}
-      onClick={() => setActiveFolderId(null)}
     >
       {/* Drag region + title */}
       <div
@@ -256,9 +211,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              startCreating("file", targetFolderForNew);
+              startCreating("file", rootFolderId ?? "");
             }}
-            disabled={syncing}
+            disabled={syncing || !rootFolderId}
             className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
             aria-label="New file"
             title="New file (⌘N)"
@@ -268,9 +223,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              startCreating("folder", targetFolderForNew);
+              startCreating("folder", rootFolderId ?? "");
             }}
-            disabled={syncing}
+            disabled={syncing || !rootFolderId}
             className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
             aria-label="New folder"
             title="New folder"
@@ -309,81 +264,77 @@ export default function Sidebar({ onClose }: SidebarProps) {
       )}
 
       {/* Tree / list */}
-      <div
-        className="flex-1 overflow-y-auto px-1 pb-2"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="flex-1 overflow-hidden px-1 pb-2 flex flex-col">
         {query ? (
-          <>
+          <div className="flex-1 overflow-y-auto">
             {filtered.length === 0 && (
               <p className="text-xs text-center text-gray-400 mt-8">No results.</p>
             )}
             {filtered.map((note) => (
-              <FileTreeItem
+              <div
                 key={note.id}
-                note={note}
-                active={note.id === activeId}
-                level={0}
                 onClick={() => { openNote(note.id); onClose?.(); }}
-                onDelete={() => deleteNote(note.id)}
-                onOpenInWindow={isDesktop ? () => tauriWindow.openNoteWindow(note.id, note.title).catch(() => {}) : undefined}
-              />
+                className={clsx(
+                  "flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer select-none text-sm",
+                  note.id === activeId
+                    ? "bg-neutral-200/80 dark:bg-white/10 text-gray-900 dark:text-gray-100"
+                    : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700/60"
+                )}
+              >
+                <FileText size={13} className="shrink-0 text-gray-400" />
+                <span className="truncate">{note.title || "Untitled"}</span>
+              </div>
             ))}
-          </>
+          </div>
         ) : (
           <>
-            {rootFolders.length === 0 && rootNotes.length === 0 && !creating && (
-              <p className="text-xs text-center text-gray-400 mt-8">
-                No notes yet. Click + to create one.
-              </p>
-            )}
-
-            {creating?.parentId === rootFolderId && (
+            {creating && (
               <InlineCreateInput
                 type={creating.type}
-                level={0}
                 value={creatingName}
                 onChange={setCreatingName}
                 onConfirm={confirmCreate}
                 onCancel={cancelCreate}
               />
             )}
-
-            {rootFolders.map((folder) => (
-              <FolderTreeItem
-                key={folder.id}
-                folder={folder}
-                level={0}
-                {...sharedFolderProps}
-              />
-            ))}
-
-            {rootNotes.map((note) => (
-              <FileTreeItem
-                key={note.id}
-                note={note}
-                active={note.id === activeId}
-                level={0}
-                onClick={() => { openNote(note.id); onClose?.(); }}
-                onDelete={() => deleteNote(note.id)}
-                onPointerDown={isDesktop ? handleNotePointerDown : undefined}
-                onOpenInWindow={isDesktop ? () => tauriWindow.openNoteWindow(note.id, note.title).catch(() => {}) : undefined}
-              />
-            ))}
-
-            {isDragging && (
-              <div
-                data-root-drop
-                className={clsx(
-                  "mx-1 mt-1 rounded border-2 border-dashed text-xs text-center py-1.5 transition-colors select-none",
-                  hoverRoot
-                    ? "border-neutral-400 bg-neutral-100 dark:bg-neutral-700/50 text-neutral-500 dark:text-neutral-400"
-                    : "border-neutral-300 dark:border-neutral-600 text-gray-400"
-                )}
-              >
-                Move to root
-              </div>
+            {treeData.length === 0 && !creating && (
+              <p className="text-xs text-center text-gray-400 mt-8">
+                No notes yet. Click + to create one.
+              </p>
             )}
+            <div ref={treeContainerRef} className="flex-1">
+              <Tree<TreeNode>
+                data={treeData}
+                onMove={handleMove}
+                disableDrop={!isDesktop}
+                disableDrag={!isDesktop}
+                rowHeight={26}
+                indent={16}
+                openByDefault={false}
+                width={treeDims.width}
+                height={treeDims.height}
+              >
+                {(props) => (
+                  <ArboristNode
+                    {...props}
+                    activeNoteId={activeId}
+                    isDesktop={isDesktop}
+                    onNoteClick={(id) => { openNote(id); onClose?.(); }}
+                    onNoteDelete={deleteNote}
+                    onFolderDelete={deleteFolder}
+                    onStartCreating={startCreating}
+                    onNoteOpenInWindow={
+                      isDesktop
+                        ? (id) => {
+                            const note = notes.find((n) => n.id === id);
+                            tauriWindow.openNoteWindow(id, note?.title ?? "").catch(() => {});
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+              </Tree>
+            </div>
           </>
         )}
       </div>
@@ -409,23 +360,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <LogOut size={14} />
         </button>
       </div>
-
-      {/* Drag ghost */}
-      {dragGhost && (
-        <div
-          style={{
-            position: "fixed",
-            left: dragGhost.x + 12,
-            top: dragGhost.y + 4,
-            pointerEvents: "none",
-            zIndex: 9999,
-          }}
-          className="flex items-center gap-1.5 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded px-2 py-1 text-xs shadow-lg opacity-90 max-w-48"
-        >
-          <FileText size={12} className="shrink-0 text-gray-400" />
-          <span className="truncate">{dragGhost.title}</span>
-        </div>
-      )}
     </aside>
   );
 }

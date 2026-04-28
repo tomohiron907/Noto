@@ -385,6 +385,22 @@ pub fn soft_delete_folder(conn: &Connection, local_id: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn move_folder(conn: &Connection, local_id: &str, new_parent_local_id: &str) -> Result<()> {
+    let new_parent_drive_id: Option<String> = conn
+        .query_row(
+            "SELECT drive_id FROM folders WHERE local_id = ?1",
+            params![new_parent_local_id],
+            |r| r.get(0),
+        )
+        .ok();
+
+    conn.execute(
+        "UPDATE folders SET parent_local_id=?1, parent_drive_id=?2 WHERE local_id=?3",
+        params![new_parent_local_id, new_parent_drive_id, local_id],
+    )?;
+    Ok(())
+}
+
 pub fn move_note(conn: &Connection, local_id: &str, new_parent_local_id: &str) -> Result<()> {
     // Look up drive_id of the new parent folder
     let new_parent_drive_id: Option<String> = conn

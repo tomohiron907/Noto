@@ -23,6 +23,7 @@ interface NotesState {
   deleteFolder: (id: string) => Promise<void>;
   createFolder: (name: string, parentId?: string) => Promise<void>;
   moveNote: (noteId: string, oldParentId: string, newParentId: string) => Promise<void>;
+  moveFolder: (folderId: string, newParentId: string) => Promise<void>;
   markDirty: (content: string) => void;
   setActiveTitle: (title: string) => void;
   refreshActiveNote: () => Promise<void>;
@@ -167,6 +168,20 @@ export const useNotesStore = create<NotesState>()(
         set((s) => {
           s.folders.push(folder);
           s.folders.sort((a, b) => a.name.localeCompare(b.name));
+          s.syncing = false;
+        });
+      } catch (e) {
+        set((s) => { s.error = String(e); s.syncing = false; });
+      }
+    },
+
+    moveFolder: async (folderId: string, newParentId: string) => {
+      set((s) => { s.syncing = true; });
+      try {
+        await tauriSync.moveFolder(folderId, newParentId);
+        set((s) => {
+          const idx = s.folders.findIndex((f) => f.id === folderId);
+          if (idx !== -1) s.folders[idx].parent_id = newParentId;
           s.syncing = false;
         });
       } catch (e) {

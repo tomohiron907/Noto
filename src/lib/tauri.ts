@@ -35,6 +35,8 @@ export const tauriSync = {
     invoke<void>("sync_delete_folder", { localId }),
   moveNote: (localId: string, newParentLocalId: string) =>
     invoke<void>("sync_move_note", { localId, newParentLocalId }),
+  moveFolder: (localId: string, newParentLocalId: string) =>
+    invoke<void>("sync_move_folder", { localId, newParentLocalId }),
   trigger: () => invoke<void>("sync_trigger"),
   getStatus: () => invoke<SyncStatus>("sync_get_status"),
 };
