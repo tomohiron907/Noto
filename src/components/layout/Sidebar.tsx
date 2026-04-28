@@ -11,6 +11,7 @@ import {
 import clsx from "clsx";
 import { Tree } from "react-arborist";
 import type { MoveHandler } from "react-arborist";
+import { TouchBackend } from "react-dnd-touch-backend";
 import { useNotesStore } from "../../stores/notesStore";
 import { useAuthStore } from "../../stores/authStore";
 import { tauriWindow } from "../../lib/tauri";
@@ -20,6 +21,11 @@ import type { FolderMetadata, NoteMetadata } from "../../lib/types";
 const LAST_NOTE_KEY = "noto_last_note_id";
 const isDesktop = !("ontouchstart" in window || navigator.maxTouchPoints > 0);
 const isNoteWindow = !!new URLSearchParams(window.location.search).get("noteId");
+
+// Tauri WKWebView では HTML5 DnD (dragover.preventDefault) が機能しないため
+// pointer/mouse イベントベースの TouchBackend を使う
+const PointerBackend = (manager: Parameters<typeof TouchBackend>[0], context: Parameters<typeof TouchBackend>[1]) =>
+  TouchBackend(manager, context, { enableMouseEvents: true, delayTouchStart: 50 });
 
 type CreatingState = { type: "file" | "folder"; parentId: string } | null;
 
@@ -306,6 +312,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
               <Tree<TreeNode>
                 data={treeData}
                 onMove={handleMove}
+                dndBackend={isDesktop ? PointerBackend : undefined}
                 disableDrop={!isDesktop}
                 disableDrag={!isDesktop}
                 rowHeight={26}
