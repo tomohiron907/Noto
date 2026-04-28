@@ -15,7 +15,7 @@ import { TouchBackend } from "react-dnd-touch-backend";
 import { useNotesStore } from "../../stores/notesStore";
 import { useAuthStore } from "../../stores/authStore";
 import { tauriWindow } from "../../lib/tauri";
-import ArboristNode, { type TreeNode } from "../ui/ArboristNode";
+import ArboristNode, { type TreeNode, TREE_INDENT } from "../ui/ArboristNode";
 import type { FolderMetadata, NoteMetadata } from "../../lib/types";
 
 const LAST_NOTE_KEY = "noto_last_note_id";
@@ -34,7 +34,9 @@ function buildArboristTree(
   notes: NoteMetadata[],
   parentId: string
 ): TreeNode[] {
-  const childFolders = folders.filter((f) => f.parent_id === parentId);
+  const childFolders = folders.filter(
+    (f) => f.parent_id === parentId && f.name !== ".noto"
+  );
   const childNotes = notes.filter((n) => n.parent_id === parentId);
   return [
     ...childFolders.map((f) => ({
@@ -315,8 +317,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 dndBackend={isDesktop ? PointerBackend : undefined}
                 disableDrop={!isDesktop}
                 disableDrag={!isDesktop}
-                rowHeight={26}
-                indent={16}
+                rowHeight={30}
+                indent={TREE_INDENT}
                 openByDefault={false}
                 width={treeDims.width}
                 height={treeDims.height}

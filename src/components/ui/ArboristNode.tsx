@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 
+export const TREE_INDENT = 16;
+
 export interface TreeNode {
   id: string; // "f:<localId>" | "n:<localId>"
   name: string;
@@ -66,7 +68,7 @@ export default function ArboristNode({
         style={style}
         ref={dragHandle}
         className={clsx(
-          "group flex items-center gap-0.5 pr-1 py-0.5 rounded cursor-pointer select-none",
+          "group relative flex items-center gap-0.5 pr-1 py-1 rounded cursor-pointer select-none",
           isActive
             ? "bg-neutral-200/80 dark:bg-white/10 text-gray-900 dark:text-gray-100"
             : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700/60",
@@ -74,6 +76,13 @@ export default function ArboristNode({
             "ring-1 ring-inset ring-neutral-400 bg-neutral-200/60 dark:ring-neutral-500 dark:bg-neutral-600/40"
         )}
       >
+        {Array.from({ length: node.level }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px bg-neutral-200 dark:bg-neutral-700/60"
+            style={{ left: i * TREE_INDENT + TREE_INDENT / 2 }}
+          />
+        ))}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -100,7 +109,7 @@ export default function ArboristNode({
           ) : (
             <Folder size={13} className="shrink-0 text-gray-400 dark:text-gray-500" />
           )}
-          <span className="text-sm truncate min-w-0">{node.data.name}</span>
+          <span className="text-sm truncate min-w-0 font-medium">{node.data.name}</span>
         </div>
 
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0 shrink-0">
@@ -158,13 +167,20 @@ export default function ArboristNode({
             : undefined
         }
         className={clsx(
-          "group flex items-center gap-1.5 pr-1 py-0.5 rounded select-none",
+          "group relative flex items-center gap-1.5 pr-1 py-1 rounded select-none",
           isDesktop ? "cursor-grab" : "cursor-pointer",
           isActive
             ? "bg-neutral-200/80 dark:bg-white/10 text-gray-900 dark:text-gray-100"
             : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700/60"
         )}
       >
+        {Array.from({ length: node.level }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px bg-neutral-200 dark:bg-neutral-700/60"
+            style={{ left: i * TREE_INDENT + TREE_INDENT / 2 }}
+          />
+        ))}
         <FileText
           size={13}
           className={clsx(
