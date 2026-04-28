@@ -268,12 +268,44 @@ pub async fn sync_move_note(
 
 #[tauri::command]
 pub async fn sync_move_folder(
+    app: AppHandle,
     state: State<'_, Arc<SyncDb>>,
     local_id: String,
     new_parent_local_id: String,
 ) -> Result<(), String> {
-    let conn = state.conn.lock().unwrap();
-    db::move_folder(&conn, &local_id, &new_parent_local_id).map_err(|e| e.to_string())
+    let (folder_drive_id, old_parent_drive_id, new_parent_drive_id) = {
+        let conn = state.conn.lock().unwrap();
+        let folder_drive_id = db::get_folder_drive_id(&conn, &local_id).map_err(|e| e.to_string())?;
+        let old_parent_local: Option<String> = conn
+            .query_row(
+                "SELECT parent_local_id FROM folders WHERE local_id = ?1",
+                rusqlite::params![local_id],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
+        let old_parent_drive = old_parent_local
+            .as_ref()
+            .and_then(|lid| db::get_folder_drive_id(&conn, lid).ok().flatten());
+        let new_parent_drive = db::get_folder_drive_id(&conn, &new_parent_local_id)
+            .map_err(|e| e.to_string())?;
+        (folder_drive_id, old_parent_drive, new_parent_drive)
+    };
+
+    {
+        let conn = state.conn.lock().unwrap();
+        db::move_folder(&conn, &local_id, &new_parent_local_id).map_err(|e| e.to_string())?;
+    }
+
+    if let (Some(fdid), Some(opdid), Some(npdid)) =
+        (&folder_drive_id, &old_parent_drive_id, &new_parent_drive_id)
+    {
+        let _ = engine::move_note_on_drive(&app, state.http.clone(), fdid, opdid, npdid)
+            .await
+            .map_err(|e| log::warn!("[move_folder] Drive call failed: {}", e));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
