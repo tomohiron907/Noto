@@ -176,32 +176,23 @@ export const useNotesStore = create<NotesState>()(
     },
 
     moveFolder: async (folderId: string, newParentId: string) => {
-      set((s) => { s.syncing = true; });
-      try {
-        await tauriSync.moveFolder(folderId, newParentId);
-        set((s) => {
-          const idx = s.folders.findIndex((f) => f.id === folderId);
-          if (idx !== -1) s.folders[idx].parent_id = newParentId;
-          s.syncing = false;
-        });
-      } catch (e) {
-        set((s) => { s.error = String(e); s.syncing = false; });
-      }
+      set((s) => {
+        const idx = s.folders.findIndex((f) => f.id === folderId);
+        if (idx !== -1) s.folders[idx].parent_id = newParentId;
+      });
+      tauriSync.moveFolder(folderId, newParentId).catch((e) => {
+        set((s) => { s.error = String(e); });
+      });
     },
 
     moveNote: async (noteId: string, _oldParentId: string, newParentId: string) => {
-      console.log("[DnD] moveNote called noteId=", noteId, "newParentId=", newParentId);
-      set((s) => { s.syncing = true; });
-      try {
-        await tauriSync.moveNote(noteId, newParentId);
-        set((s) => {
-          const idx = s.notes.findIndex((n) => n.id === noteId);
-          if (idx !== -1) s.notes[idx].parent_id = newParentId;
-          s.syncing = false;
-        });
-      } catch (e) {
-        set((s) => { s.error = String(e); s.syncing = false; });
-      }
+      set((s) => {
+        const idx = s.notes.findIndex((n) => n.id === noteId);
+        if (idx !== -1) s.notes[idx].parent_id = newParentId;
+      });
+      tauriSync.moveNote(noteId, newParentId).catch((e) => {
+        set((s) => { s.error = String(e); });
+      });
     },
 
     markDirty: (content: string) => {
