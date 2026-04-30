@@ -120,13 +120,16 @@ export default function InkEditor() {
   const [penColor, setPenColor] = useState(getDefaultColor);
   const [penSize, setPenSize] = useState(4);
   const [mode, setMode] = useState<"pen" | "eraser">("pen");
+  const [zoom, setZoom] = useState(1.0);
   // Keep mutable refs for use inside event handlers without stale closures
   const penColorRef = useRef(penColor);
   const penSizeRef = useRef(penSize);
   const modeRef = useRef(mode);
+  const zoomRef = useRef(zoom);
   useEffect(() => { penColorRef.current = penColor; }, [penColor]);
   useEffect(() => { penSizeRef.current = penSize; }, [penSize]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
   // Track dark mode changes
   const [isDark, setIsDark] = useState(() => isDarkMode());
@@ -156,6 +159,14 @@ export default function InkEditor() {
   // Offscreen snapshot of committedRef taken at the start of each eraser stroke.
   // Used to restore+redraw the full stroke on every move, keeping perfect-freehand smooth.
   const eraserSnapshotRef = useRef<HTMLCanvasElement | null>(null);
+  const pinchStateRef = useRef<{
+    startDist: number;
+    startZoom: number;
+    pinchViewY: number;
+    startScrollTop: number;
+  } | null>(null);
+  const zoomOuterRef = useRef<HTMLDivElement>(null);
+  const zoomInnerRef = useRef<HTMLDivElement>(null);
 
   // ---- Canvas width (responsive) ----
   const canvasWidthRef = useRef(CANVAS_MAX_WIDTH);
@@ -417,8 +428,24 @@ export default function InkEditor() {
         currentPts.current = [[x, y]];
         drawActiveStroke();
       } else {
-        fingerStartYRef.current = touch.clientY;
-        fingerScrollStartRef.current = scrollTopRef.current;
+        const allFingers = Array.from(e.touches).filter(t => !isStylusTouch(t));
+        if (allFingers.length === 2) {
+          // Second finger down — start pinch-to-zoom
+          fingerStartYRef.current = null;
+          const [t0, t1] = allFingers;
+          const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+          const midClientY = (t0.clientY + t1.clientY) / 2;
+          const containerTop = container.getBoundingClientRect().top;
+          pinchStateRef.current = {
+            startDist: dist,
+            startZoom: zoomRef.current,
+            pinchViewY: midClientY - containerTop,
+            startScrollTop: scrollTopRef.current,
+          };
+        } else {
+          fingerStartYRef.current = touch.clientY;
+          fingerScrollStartRef.current = scrollTopRef.current;
+        }
       }
     };
 
@@ -440,6 +467,27 @@ export default function InkEditor() {
         maybeExtend(y + scrollTopRef.current);
         drawActiveStroke();
       } else {
+        const allFingers = Array.from(e.touches).filter(t => !isStylusTouch(t));
+        if (allFingers.length === 2 && pinchStateRef.current) {
+          e.preventDefault();
+          const [t0, t1] = allFingers;
+          const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+          const { startDist, startZoom, pinchViewY, startScrollTop } = pinchStateRef.current;
+          const newZoom = Math.max(0.5, Math.min(3.0, startZoom * (dist / startDist)));
+          // Keep the pinch center at the same viewport position:
+          // canvasY at pinch center = (pinchViewY + startScrollTop) / startZoom
+          // after zoom: canvasY * newZoom - newScrollTop = pinchViewY
+          const newScrollTop = (pinchViewY + startScrollTop) * (newZoom / startZoom) - pinchViewY;
+          // Update DOM imperatively so scrollHeight reflects newZoom before scrollTo clamps
+          const outer = zoomOuterRef.current;
+          const inner = zoomInnerRef.current;
+          if (outer) outer.style.height = `${inkDocRef.current.height * newZoom}px`;
+          if (inner) inner.style.transform = `scale(${newZoom})`;
+          zoomRef.current = newZoom;
+          setZoom(newZoom);
+          scrollTo(newScrollTop);
+          return;
+        }
         if (fingerStartYRef.current === null) return;
         e.preventDefault();
         const delta = fingerStartYRef.current - touch.clientY;
@@ -455,6 +503,10 @@ export default function InkEditor() {
         isDrawing.current = false;
         commitStroke();
       } else {
+        const remainingFingers = Array.from(e.touches).filter(t => !isStylusTouch(t));
+        if (remainingFingers.length < 2) {
+          pinchStateRef.current = null;
+        }
         fingerStartYRef.current = null;
       }
     };
@@ -557,21 +609,37 @@ export default function InkEditor() {
               <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6" />
             </div>
           ) : (
-            <div className="relative w-full" style={{ height: canvasHeight }}>
-              <canvas
-                ref={committedRef}
-                width={canvasWidth}
-                height={canvasHeight}
-                className="absolute inset-0 pointer-events-none"
-                style={{ width: "100%", height: canvasHeight, background: "transparent" }}
-              />
-              <canvas
-                ref={activeRef}
-                width={canvasWidth}
-                height={canvasHeight}
-                className="absolute inset-0"
-                style={{ width: "100%", height: canvasHeight, background: "transparent" }}
-              />
+            // Outer div reserves the correct scrollable height for the zoomed canvas
+            <div ref={zoomOuterRef} style={{ height: canvasHeight * zoom, position: "relative" }}>
+              <div
+                ref={zoomInnerRef}
+                style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: "top center",
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: canvasHeight,
+                }}
+              >
+                <div className="relative w-full" style={{ height: canvasHeight }}>
+                  <canvas
+                    ref={committedRef}
+                    width={canvasWidth}
+                    height={canvasHeight}
+                    className="absolute inset-0 pointer-events-none"
+                    style={{ width: "100%", height: canvasHeight, background: "transparent" }}
+                  />
+                  <canvas
+                    ref={activeRef}
+                    width={canvasWidth}
+                    height={canvasHeight}
+                    className="absolute inset-0"
+                    style={{ width: "100%", height: canvasHeight, background: "transparent" }}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -640,8 +708,17 @@ export default function InkEditor() {
             Erase
           </button>
 
-          {/* Spacer + status */}
+          {/* Spacer + zoom + status */}
           <div className="ml-auto flex items-center gap-3 shrink-0 text-xs text-gray-400">
+            {zoom !== 1.0 && (
+              <button
+                onClick={() => { setZoom(1.0); zoomRef.current = 1.0; }}
+                className="text-blue-500 hover:text-blue-600 font-medium"
+                title="Reset zoom"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+            )}
             <span>{strokeCount} strokes</span>
             <span className={syncing ? "text-blue-500" : dirty ? "text-amber-500" : ""}>
               {statusText}
