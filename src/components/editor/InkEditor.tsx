@@ -531,14 +531,14 @@ export default function InkEditor() {
                 width={canvasWidth}
                 height={canvasHeight}
                 className="absolute inset-0 pointer-events-none"
-                style={{ background: "transparent" }}
+                style={{ width: "100%", height: canvasHeight, background: "transparent" }}
               />
               <canvas
                 ref={activeRef}
                 width={canvasWidth}
                 height={canvasHeight}
                 className="absolute inset-0"
-                style={{ background: "transparent" }}
+                style={{ width: "100%", height: canvasHeight, background: "transparent" }}
               />
             </div>
           )}
