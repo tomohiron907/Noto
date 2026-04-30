@@ -49,6 +49,10 @@ function getDefaultColor(): string {
   return isDarkMode() ? PEN_COLORS[0].dark : PEN_COLORS[0].light;
 }
 
+function getDpr(): number {
+  return typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+}
+
 function svgPathFromStroke(stroke: number[][]): string {
   if (stroke.length < 2) return "";
   const d: string[] = [`M ${stroke[0][0]} ${stroke[0][1]}`];
@@ -69,8 +73,9 @@ function drawStrokeOnCtx(
   isEraser = false,
   scaleX = 1,
 ) {
-  const scaledPts = pts.map(([x, y]) => [x * scaleX, y] as [number, number]);
-  const outline = getStroke(scaledPts, { ...FREEHAND_OPTIONS, size: size * scaleX });
+  const dpr = getDpr();
+  const scaledPts = pts.map(([x, y]) => [x * scaleX * dpr, y * dpr] as [number, number]);
+  const outline = getStroke(scaledPts, { ...FREEHAND_OPTIONS, size: size * scaleX * dpr });
   if (outline.length === 0) return;
   const path = new Path2D(svgPathFromStroke(outline));
   if (isEraser) {
@@ -368,8 +373,10 @@ export default function InkEditor() {
   const getCoords = (clientX: number, clientY: number): [number, number] => {
     const canvas = activeRef.current!;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const logicalWidth = canvas.width / getDpr();
+    const logicalHeight = canvas.height / getDpr();
+    const scaleX = logicalWidth / rect.width;
+    const scaleY = logicalHeight / rect.height;
     return [(clientX - rect.left) * scaleX, (clientY - rect.top) * scaleY];
   };
 
@@ -626,15 +633,15 @@ export default function InkEditor() {
                 <div className="relative w-full" style={{ height: canvasHeight }}>
                   <canvas
                     ref={committedRef}
-                    width={canvasWidth}
-                    height={canvasHeight}
+                    width={canvasWidth * getDpr()}
+                    height={canvasHeight * getDpr()}
                     className="absolute inset-0 pointer-events-none"
                     style={{ width: "100%", height: canvasHeight, background: "transparent" }}
                   />
                   <canvas
                     ref={activeRef}
-                    width={canvasWidth}
-                    height={canvasHeight}
+                    width={canvasWidth * getDpr()}
+                    height={canvasHeight * getDpr()}
                     className="absolute inset-0"
                     style={{ width: "100%", height: canvasHeight, background: "transparent" }}
                   />
