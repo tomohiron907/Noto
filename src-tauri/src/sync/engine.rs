@@ -14,10 +14,23 @@ const DRIVE_CHANGES_API: &str = "https://www.googleapis.com/drive/v3/changes";
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const MD_MIME: &str = "text/markdown";
 const TEXT_PLAIN_MIME: &str = "text/plain";
+const NOTO_MIME: &str = "application/json";
 const FIELDS: &str = "id,name,modifiedTime,parents,mimeType";
 
 fn is_md_file(mime: &str, name: &str) -> bool {
     mime == MD_MIME || (mime == TEXT_PLAIN_MIME && name.ends_with(".md"))
+}
+
+fn is_noto_file(mime: &str, name: &str) -> bool {
+    mime == NOTO_MIME && name.ends_with(".noto")
+}
+
+fn is_note_file(mime: &str, name: &str) -> bool {
+    is_md_file(mime, name) || is_noto_file(mime, name)
+}
+
+fn note_type_for(mime: &str, name: &str) -> &'static str {
+    if is_noto_file(mime, name) { "ink" } else { "md" }
 }
 
 pub struct SyncDb {
@@ -156,8 +169,8 @@ async fn import_notes_metadata(
             .collect::<Vec<_>>()
             .join(" or ");
         let query = format!(
-            "(mimeType='{}' or mimeType='{}') and ({}) and trashed=false",
-            MD_MIME, TEXT_PLAIN_MIME, parent_clauses
+            "(mimeType='{}' or mimeType='{}' or mimeType='{}') and ({}) and trashed=false",
+            MD_MIME, TEXT_PLAIN_MIME, NOTO_MIME, parent_clauses
         );
         let url = format!(
             "{}?q={}&fields=files({})&orderBy=modifiedTime desc",
@@ -169,12 +182,17 @@ async fn import_notes_metadata(
         let resp: FileList = client.get(&url).await?.json().await?;
         let conn = db_state.conn.lock().unwrap();
         for f in resp.files {
-            if !is_md_file(&f.mime_type, &f.name) {
+            if !is_note_file(&f.mime_type, &f.name) {
                 continue;
             }
             let parent_drive_id = f.parents.as_ref().and_then(|p| p.first()).map(|s| s.as_str());
-            let title = f.name.trim_end_matches(".md");
-            db::upsert_note_by_drive_id(&conn, &f.id, title, parent_drive_id, &f.modified_time).map(|_| ())?;
+            let note_type = note_type_for(&f.mime_type, &f.name);
+            let title = if note_type == "ink" {
+                f.name.trim_end_matches(".noto")
+            } else {
+                f.name.trim_end_matches(".md")
+            };
+            db::upsert_note_by_drive_id(&conn, &f.id, title, parent_drive_id, &f.modified_time, note_type).map(|_| ())?;
         }
     }
     Ok(())
@@ -260,14 +278,19 @@ pub async fn push_dirty(client: &DriveClient, db_state: &SyncDb) -> Result<usize
             continue;
         }
 
-        let Some((title, content)) = (|| -> Result<Option<_>> {
+        let Some((title, content, note_type)) = (|| -> Result<Option<_>> {
             let conn = db_state.conn.lock().unwrap();
             db::get_note_for_push(&conn, &note.local_id)
         })()? else {
             continue;
         };
 
-        let file_name = format!("{}.md", title);
+        let (file_name, mime) = if note_type == "ink" {
+            (format!("{}.noto", title), NOTO_MIME)
+        } else {
+            (format!("{}.md", title), MD_MIME)
+        };
+
         let result = if let Some(drive_id) = &note.drive_id {
             // Update existing
             let metadata = json!({ "name": file_name });
@@ -282,7 +305,7 @@ pub async fn push_dirty(client: &DriveClient, db_state: &SyncDb) -> Result<usize
                 modified_time: String,
             }
             client
-                .multipart_upload(Method::PATCH, &url, &metadata.to_string(), &content, MD_MIME)
+                .multipart_upload(Method::PATCH, &url, &metadata.to_string(), &content, mime)
                 .await
                 .map_err(|e| e)?
                 .json::<UpdatedFile>()
@@ -314,7 +337,7 @@ pub async fn push_dirty(client: &DriveClient, db_state: &SyncDb) -> Result<usize
                 modified_time: String,
             }
             client
-                .multipart_upload(Method::POST, &url, &metadata.to_string(), &content, MD_MIME)
+                .multipart_upload(Method::POST, &url, &metadata.to_string(), &content, mime)
                 .await
                 .map_err(|e| e)?
                 .json::<CreatedFile>()
@@ -417,7 +440,7 @@ pub async fn pull_changes(client: &DriveClient, db_state: &SyncDb) -> Result<(bo
                     db::resolve_folder_parent_local_ids(&conn)?;
                     had_changes = true;
                 }
-            } else if is_md_file(mime, file.name.as_deref().unwrap_or("")) {
+            } else if is_note_file(mime, file.name.as_deref().unwrap_or("")) {
                 // Note change
                 if removed {
                     // Find by drive_id and soft delete
@@ -457,7 +480,12 @@ pub async fn pull_changes(client: &DriveClient, db_state: &SyncDb) -> Result<(bo
                     if is_ours {
                         let parent_drive_id =
                             file.parents.as_ref().and_then(|p| p.first()).map(|s| s.as_str());
-                        let title = name.trim_end_matches(".md");
+                        let note_type = note_type_for(mime, name);
+                        let title = if note_type == "ink" {
+                            name.trim_end_matches(".noto")
+                        } else {
+                            name.trim_end_matches(".md")
+                        };
                         let (local_id, was_updated) = {
                             let conn = db_state.conn.lock().unwrap();
                             let result = db::upsert_note_by_drive_id(
@@ -466,6 +494,7 @@ pub async fn pull_changes(client: &DriveClient, db_state: &SyncDb) -> Result<(bo
                                 title,
                                 parent_drive_id,
                                 modified_time,
+                                note_type,
                             )?;
                             db::resolve_note_parent_local_ids(&conn)?;
                             result

@@ -45,6 +45,7 @@
     "katex": "^0.16.45",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.8.0",
+    "perfect-freehand": "^1.2.3",
     "react": "^19.1.0",
     "react-arborist": "^3.5.0",
     "react-dnd-touch-backend": "^16.0.1",

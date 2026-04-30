@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
 import NoteEditor from "../editor/NoteEditor";
+import InkEditor from "../editor/InkEditor";
 import { useNotesStore } from "../../stores/notesStore";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -16,7 +17,7 @@ const setTrafficLightsVisible = (visible: boolean) => {
 };
 
 export default function AppShell() {
-  const { activeId } = useNotesStore();
+  const { activeId, notes } = useNotesStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [sidebarTrigger, setSidebarTrigger] = useState<"none" | "hover" | "click">("none");
 
@@ -198,7 +199,11 @@ export default function AppShell() {
 
         {activeId ? (
           <div className="flex-1 overflow-hidden flex flex-col">
-            <NoteEditor />
+            {notes.find((n) => n.id === activeId)?.note_type === "ink" ? (
+              <InkEditor />
+            ) : (
+              <NoteEditor />
+            )}
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm select-none">

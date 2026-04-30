@@ -26,7 +26,8 @@ fn migrate(conn: &Connection) -> Result<()> {
             content_fetched   INTEGER NOT NULL DEFAULT 0,
             dirty             INTEGER NOT NULL DEFAULT 0,
             deleted           INTEGER NOT NULL DEFAULT 0,
-            synced_at         INTEGER
+            synced_at         INTEGER,
+            note_type         TEXT NOT NULL DEFAULT 'md'
         );
         CREATE TABLE IF NOT EXISTS folders (
             local_id        TEXT PRIMARY KEY,
@@ -48,6 +49,10 @@ fn migrate(conn: &Connection) -> Result<()> {
         );
         ",
     )?;
+    // Add note_type column to existing databases that predate this migration
+    let _ = conn.execute_batch(
+        "ALTER TABLE notes ADD COLUMN note_type TEXT NOT NULL DEFAULT 'md';",
+    );
     Ok(())
 }
 
@@ -176,6 +181,7 @@ pub fn upsert_note_by_drive_id(
     title: &str,
     parent_drive_id: Option<&str>,
     drive_modified_at: &str,
+    note_type: &str,
 ) -> Result<(String, bool)> {
     let existing: Option<(String, Option<String>)> = conn
         .query_row(
@@ -219,15 +225,16 @@ pub fn upsert_note_by_drive_id(
     conn.execute(
         "INSERT INTO notes
          (local_id, drive_id, title, content, parent_drive_id, modified_at,
-          drive_modified_at, content_fetched, dirty, deleted)
-         VALUES (?1, ?2, ?3, '', ?4, ?5, ?6, 0, 0, 0)",
+          drive_modified_at, content_fetched, dirty, deleted, note_type)
+         VALUES (?1, ?2, ?3, '', ?4, ?5, ?6, 0, 0, 0, ?7)",
         params![
             local_id,
             drive_id,
             title,
             parent_drive_id,
             now_ms(),
-            drive_modified_at
+            drive_modified_at,
+            note_type
         ],
     )?;
     Ok((local_id, false))
@@ -264,7 +271,7 @@ pub fn resolve_note_parent_local_ids(conn: &Connection) -> Result<()> {
 pub fn get_all_notes(conn: &Connection) -> Result<Vec<LocalNote>> {
     let mut stmt = conn.prepare(
         "SELECT local_id, drive_id, title, parent_local_id, parent_drive_id,
-                modified_at, drive_modified_at, content_fetched, dirty, deleted
+                modified_at, drive_modified_at, content_fetched, dirty, deleted, note_type
          FROM notes WHERE deleted = 0",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -279,6 +286,7 @@ pub fn get_all_notes(conn: &Connection) -> Result<Vec<LocalNote>> {
             content_fetched: r.get::<_, i64>(7)? != 0,
             dirty: r.get::<_, i64>(8)? != 0,
             deleted: r.get::<_, i64>(9)? != 0,
+            note_type: r.get::<_, Option<String>>(10)?.unwrap_or_else(|| "md".to_string()),
         })
     })?;
     Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -320,15 +328,16 @@ pub fn create_note(
     title: &str,
     parent_local_id: Option<&str>,
     parent_drive_id: Option<&str>,
+    note_type: &str,
 ) -> Result<String> {
     let local_id = uuid::Uuid::new_v4().to_string();
     let ts = now_ms();
     conn.execute(
         "INSERT INTO notes
          (local_id, drive_id, title, content, parent_local_id, parent_drive_id,
-          modified_at, content_fetched, dirty, deleted)
-         VALUES (?1, NULL, ?2, '', ?3, ?4, ?5, 1, 1, 0)",
-        params![local_id, title, parent_local_id, parent_drive_id, ts],
+          modified_at, content_fetched, dirty, deleted, note_type)
+         VALUES (?1, NULL, ?2, '', ?3, ?4, ?5, 1, 1, 0, ?6)",
+        params![local_id, title, parent_local_id, parent_drive_id, ts, note_type],
     )?;
     Ok(local_id)
 }
@@ -458,6 +467,7 @@ pub fn get_tree(conn: &Connection, root_local_id: &str) -> Result<TreeResponse> 
                 .parent_local_id
                 .clone()
                 .unwrap_or_else(|| root_local_id.to_string()),
+            note_type: n.note_type.clone(),
         })
         .collect();
 
@@ -473,7 +483,7 @@ pub fn get_tree(conn: &Connection, root_local_id: &str) -> Result<TreeResponse> 
 pub fn get_dirty_notes(conn: &Connection) -> Result<Vec<LocalNote>> {
     let mut stmt = conn.prepare(
         "SELECT local_id, drive_id, title, parent_local_id, parent_drive_id,
-                modified_at, drive_modified_at, content_fetched, dirty, deleted
+                modified_at, drive_modified_at, content_fetched, dirty, deleted, note_type
          FROM notes WHERE dirty = 1",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -488,6 +498,7 @@ pub fn get_dirty_notes(conn: &Connection) -> Result<Vec<LocalNote>> {
             content_fetched: r.get::<_, i64>(7)? != 0,
             dirty: r.get::<_, i64>(8)? != 0,
             deleted: r.get::<_, i64>(9)? != 0,
+            note_type: r.get::<_, Option<String>>(10)?.unwrap_or_else(|| "md".to_string()),
         })
     })?;
     Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -519,11 +530,11 @@ pub fn get_note_drive_id(conn: &Connection, local_id: &str) -> Result<Option<Str
         .flatten())
 }
 
-pub fn get_note_for_push(conn: &Connection, local_id: &str) -> Result<Option<(String, String)>> {
+pub fn get_note_for_push(conn: &Connection, local_id: &str) -> Result<Option<(String, String, String)>> {
     conn.query_row(
-        "SELECT title, content FROM notes WHERE local_id = ?1 AND deleted = 0",
+        "SELECT title, content, COALESCE(note_type, 'md') FROM notes WHERE local_id = ?1 AND deleted = 0",
         params![local_id],
-        |r| Ok((r.get(0)?, r.get(1)?)),
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )
     .map(Some)
     .or_else(|e| match e {
@@ -565,7 +576,7 @@ mod tests {
     #[test]
     fn test_create_and_read_note() {
         let conn = in_memory();
-        let local_id = create_note(&conn, "Hello", None, None).unwrap();
+        let local_id = create_note(&conn, "Hello", None, None, "md").unwrap();
         let (content, fetched) = get_note_content(&conn, &local_id).unwrap().unwrap();
         assert_eq!(content, "");
         assert!(fetched);
@@ -577,7 +588,7 @@ mod tests {
     #[test]
     fn test_soft_delete_note() {
         let conn = in_memory();
-        let id = create_note(&conn, "Temp", None, None).unwrap();
+        let id = create_note(&conn, "Temp", None, None, "md").unwrap();
         soft_delete_note(&conn, &id).unwrap();
         let notes = get_all_notes(&conn).unwrap();
         assert!(notes.is_empty());

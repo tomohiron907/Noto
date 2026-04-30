@@ -5,6 +5,7 @@ import {
   Folder,
   FolderPlus,
   LogOut,
+  PenLine,
   Search,
   X,
 } from "lucide-react";
@@ -27,7 +28,7 @@ const isNoteWindow = !!new URLSearchParams(window.location.search).get("noteId")
 const PointerBackend = (manager: Parameters<typeof TouchBackend>[0], context: Parameters<typeof TouchBackend>[1]) =>
   TouchBackend(manager, context, { enableMouseEvents: true, delayTouchStart: 50 });
 
-type CreatingState = { type: "file" | "folder"; parentId: string } | null;
+type CreatingState = { type: "file" | "folder" | "ink"; parentId: string } | null;
 
 function buildArboristTree(
   folders: FolderMetadata[],
@@ -58,7 +59,7 @@ function InlineCreateInput({
   onConfirm,
   onCancel,
 }: {
-  type: "file" | "folder";
+  type: "file" | "folder" | "ink";
   value: string;
   onChange: (v: string) => void;
   onConfirm: () => void;
@@ -70,6 +71,8 @@ function InlineCreateInput({
     <div className="flex items-center gap-1.5 py-0.5 px-2 mb-1">
       {type === "folder" ? (
         <Folder size={13} className="shrink-0 text-gray-400" />
+      ) : type === "ink" ? (
+        <PenLine size={13} className="shrink-0 text-gray-400" />
       ) : (
         <FileText size={13} className="shrink-0 text-gray-400" />
       )}
@@ -83,7 +86,7 @@ function InlineCreateInput({
         }}
         onBlur={onConfirm}
         className="flex-1 text-sm bg-transparent outline-none border-b border-neutral-400 text-gray-700 dark:text-gray-200 min-w-0"
-        placeholder={type === "folder" ? "Folder name…" : "Note name…"}
+        placeholder={type === "folder" ? "Folder name…" : type === "ink" ? "Ink note name…" : "Note name…"}
       />
     </div>
   );
@@ -147,7 +150,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     return () => obs.disconnect();
   }, []);
 
-  const startCreating = (type: "file" | "folder", parentId: string) => {
+  const startCreating = (type: "file" | "folder" | "ink", parentId: string) => {
     setCreating({ type, parentId });
     setCreatingName("");
     cancelledRef.current = false;
@@ -166,7 +169,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
       await createFolder(name, parentArg);
     } else {
       const parentArg = current.parentId === rootFolderId ? undefined : current.parentId;
-      await createNote(parentArg, name);
+      const noteType = current.type === "ink" ? "ink" : "md";
+      await createNote(parentArg, name, noteType);
       onClose?.();
     }
   };
@@ -227,6 +231,18 @@ export default function Sidebar({ onClose }: SidebarProps) {
             title="New file (⌘N)"
           >
             <FilePlus size={15} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              startCreating("ink", rootFolderId ?? "");
+            }}
+            disabled={syncing || !rootFolderId}
+            className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
+            aria-label="New ink note"
+            title="New ink note"
+          >
+            <PenLine size={15} />
           </button>
           <button
             onClick={(e) => {

@@ -10,6 +10,7 @@ export interface NoteMetadata {
   title: string;
   modified_time: string;
   parent_id: string;
+  note_type: "md" | "ink";
 }
 
 export interface FolderMetadata {

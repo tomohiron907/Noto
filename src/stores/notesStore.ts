@@ -17,7 +17,7 @@ interface NotesState {
 
   loadTree: () => Promise<void>;
   openNote: (id: string) => Promise<void>;
-  createNote: (parentId?: string, initialTitle?: string) => Promise<void>;
+  createNote: (parentId?: string, initialTitle?: string, noteType?: string) => Promise<void>;
   saveNote: (content: string) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
@@ -88,11 +88,11 @@ export const useNotesStore = create<NotesState>()(
       }
     },
 
-    createNote: async (parentId?: string, initialTitle?: string) => {
+    createNote: async (parentId?: string, initialTitle?: string, noteType?: string) => {
       const title = initialTitle?.trim() || "Untitled";
       set((s) => { s.syncing = true; });
       try {
-        const meta = await tauriSync.createNote(parentId, title);
+        const meta = await tauriSync.createNote(parentId, title, noteType);
         set((s) => {
           s.notes.unshift(meta);
           s.activeId = meta.id;

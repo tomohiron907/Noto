@@ -12,6 +12,7 @@ pub struct LocalNote {
     pub content_fetched: bool,
     pub dirty: bool,
     pub deleted: bool,
+    pub note_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +32,7 @@ pub struct NoteMetadata {
     pub title: String,
     pub modified_time: String,
     pub parent_id: String, // parent local_id
+    pub note_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

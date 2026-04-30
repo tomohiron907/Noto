@@ -19,10 +19,11 @@ export const tauriSync = {
     invoke<string>("sync_read_note", { localId }),
   writeNote: (localId: string, title: string, content: string) =>
     invoke<NoteMetadata>("sync_write_note", { localId, title, content }),
-  createNote: (parentLocalId?: string, title?: string) =>
+  createNote: (parentLocalId?: string, title?: string, noteType?: string) =>
     invoke<NoteMetadata>("sync_create_note", {
       parentLocalId: parentLocalId ?? null,
       title: title ?? "Untitled",
+      noteType: noteType ?? null,
     }),
   deleteNote: (localId: string) =>
     invoke<void>("sync_delete_note", { localId }),

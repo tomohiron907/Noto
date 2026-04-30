@@ -58,11 +58,11 @@ pub async fn sync_write_note(
     let root_id = db::get_sync_state(&conn, "root_local_id")
         .map_err(|e| e.to_string())?
         .unwrap_or_default();
-    let parent_id = conn
+    let (parent_id, note_type) = conn
         .query_row(
-            "SELECT COALESCE(parent_local_id, ?1) FROM notes WHERE local_id = ?2",
+            "SELECT COALESCE(parent_local_id, ?1), COALESCE(note_type, 'md') FROM notes WHERE local_id = ?2",
             rusqlite::params![root_id, local_id],
-            |r| r.get::<_, String>(0),
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
         )
         .map_err(|e| e.to_string())?;
 
@@ -71,6 +71,7 @@ pub async fn sync_write_note(
         title,
         modified_time: ts.to_string(),
         parent_id,
+        note_type,
     })
 }
 
@@ -79,7 +80,9 @@ pub async fn sync_create_note(
     state: State<'_, Arc<SyncDb>>,
     parent_local_id: Option<String>,
     title: String,
+    note_type: Option<String>,
 ) -> Result<NoteMetadata, String> {
+    let nt = note_type.as_deref().unwrap_or("md");
     let conn = state.conn.lock().unwrap();
 
     let (actual_parent_local_id, parent_drive_id) = if let Some(ref pid) = parent_local_id {
@@ -100,13 +103,14 @@ pub async fn sync_create_note(
             .map_err(|e| e.to_string())?;
         drop(conn); // release before calling create
         let conn2 = state.conn.lock().unwrap();
-        let local_id = db::create_note(&conn2, &title, Some(&root_local), root_drive.as_deref())
+        let local_id = db::create_note(&conn2, &title, Some(&root_local), root_drive.as_deref(), nt)
             .map_err(|e| e.to_string())?;
         return Ok(NoteMetadata {
             id: local_id,
             title,
             modified_time: db::now_ms().to_string(),
             parent_id: root_local,
+            note_type: nt.to_string(),
         });
     };
 
@@ -115,6 +119,7 @@ pub async fn sync_create_note(
         &title,
         actual_parent_local_id,
         parent_drive_id.as_deref(),
+        nt,
     )
     .map_err(|e| e.to_string())?;
 
@@ -127,6 +132,7 @@ pub async fn sync_create_note(
         title,
         modified_time: db::now_ms().to_string(),
         parent_id: parent_local_id.unwrap_or(root_id),
+        note_type: nt.to_string(),
     })
 }
 
