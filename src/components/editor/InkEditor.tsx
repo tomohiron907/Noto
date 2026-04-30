@@ -355,8 +355,11 @@ export default function InkEditor() {
 
   // ---- Input event helpers ----
   const getCoords = (clientX: number, clientY: number): [number, number] => {
-    const rect = activeRef.current!.getBoundingClientRect();
-    return [clientX - rect.left, clientY - rect.top];
+    const canvas = activeRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return [(clientX - rect.left) * scaleX, (clientY - rect.top) * scaleY];
   };
 
   const isStylusTouch = (touch: Touch): boolean =>
@@ -379,10 +382,34 @@ export default function InkEditor() {
     const container = scrollRef.current;
     if (!container) return;
 
+    // True while a stylus touch is actively tracking a stroke via touch events.
+    // Prevents pointer events from double-recording the same stroke.
+    const stylusTouchActiveRef = { current: false };
+
+    const cancelStroke = () => {
+      fingerStartYRef.current = null;
+      if (!isDrawing.current) return;
+      isDrawing.current = false;
+      currentPts.current = [];
+      if (modeRef.current === "eraser" && eraserSnapshotRef.current) {
+        const committed = committedRef.current;
+        if (committed) {
+          const ctx = committed.getContext("2d");
+          if (ctx) {
+            ctx.clearRect(0, 0, committed.width, committed.height);
+            ctx.drawImage(eraserSnapshotRef.current, 0, 0);
+          }
+        }
+      }
+      const actCtx = activeRef.current?.getContext("2d");
+      actCtx?.clearRect(0, 0, actCtx.canvas.width, actCtx.canvas.height);
+    };
+
     const onTouchStart = (e: TouchEvent) => {
       const touch = e.changedTouches[0];
       if (isStylusTouch(touch)) {
         e.preventDefault();
+        stylusTouchActiveRef.current = true;
         isDrawing.current = true;
         fingerStartYRef.current = null;
         if (modeRef.current === "eraser") takeEraserSnapshot();
@@ -400,6 +427,14 @@ export default function InkEditor() {
       if (isStylusTouch(touch)) {
         if (!isDrawing.current) return;
         e.preventDefault();
+        // Pencil went off the screen edge — commit stroke to avoid position drift on re-entry
+        if (touch.clientX < 0 || touch.clientX > window.innerWidth ||
+            touch.clientY < 0 || touch.clientY > window.innerHeight) {
+          stylusTouchActiveRef.current = false;
+          isDrawing.current = false;
+          commitStroke();
+          return;
+        }
         const [x, y] = getCoords(touch.clientX, touch.clientY);
         currentPts.current.push([x, y]);
         maybeExtend(y + scrollTopRef.current);
@@ -415,6 +450,7 @@ export default function InkEditor() {
     const onTouchEnd = (e: TouchEvent) => {
       const touch = e.changedTouches[0];
       if (isStylusTouch(touch)) {
+        stylusTouchActiveRef.current = false;
         if (!isDrawing.current) return;
         isDrawing.current = false;
         commitStroke();
@@ -424,30 +460,19 @@ export default function InkEditor() {
     };
 
     const onTouchCancel = () => {
-      fingerStartYRef.current = null;
-      if (!isDrawing.current) return;
-      isDrawing.current = false;
-      currentPts.current = [];
-      // Restore committed canvas if the eraser was in mid-stroke.
-      if (modeRef.current === "eraser" && eraserSnapshotRef.current) {
-        const committed = committedRef.current;
-        if (committed) {
-          const ctx = committed.getContext("2d");
-          if (ctx) {
-            ctx.clearRect(0, 0, committed.width, committed.height);
-            ctx.drawImage(eraserSnapshotRef.current, 0, 0);
-          }
-        }
-      }
-      const actCtx = activeRef.current?.getContext("2d");
-      actCtx?.clearRect(0, 0, actCtx.canvas.width, actCtx.canvas.height);
+      stylusTouchActiveRef.current = false;
+      cancelStroke();
     };
 
     const canvas = activeRef.current;
     const onPointerDown = (e: PointerEvent) => {
       if (!isPenPointer(e)) return;
-      if (isDrawing.current) return;
+      if (stylusTouchActiveRef.current) return; // touch events are handling this stroke
       e.preventDefault();
+      // Reset any orphaned state from a previous cancelled interaction
+      currentPts.current = [];
+      const actCtx = activeRef.current?.getContext("2d");
+      actCtx?.clearRect(0, 0, actCtx.canvas.width, actCtx.canvas.height);
       isDrawing.current = true;
       canvas?.setPointerCapture(e.pointerId);
       if (modeRef.current === "eraser") takeEraserSnapshot();
@@ -459,6 +484,7 @@ export default function InkEditor() {
     const onPointerMove = (e: PointerEvent) => {
       if (!isDrawing.current) return;
       if (!isPenPointer(e)) return;
+      if (stylusTouchActiveRef.current) return; // touch events are handling this stroke
       e.preventDefault();
       const [x, y] = getCoords(e.clientX, e.clientY);
       currentPts.current.push([x, y]);
@@ -467,9 +493,15 @@ export default function InkEditor() {
     };
 
     const onPointerUp = (_e: PointerEvent) => {
+      if (stylusTouchActiveRef.current) return;
       if (!isDrawing.current) return;
       isDrawing.current = false;
       commitStroke();
+    };
+
+    const onPointerCancel = () => {
+      stylusTouchActiveRef.current = false;
+      cancelStroke();
     };
 
     container.addEventListener("touchstart", onTouchStart, { passive: false });
@@ -481,7 +513,7 @@ export default function InkEditor() {
       canvas.addEventListener("pointerdown", onPointerDown);
       canvas.addEventListener("pointermove", onPointerMove);
       canvas.addEventListener("pointerup", onPointerUp);
-      canvas.addEventListener("pointercancel", onTouchCancel);
+      canvas.addEventListener("pointercancel", onPointerCancel);
     }
 
     return () => {
@@ -493,7 +525,7 @@ export default function InkEditor() {
         canvas.removeEventListener("pointerdown", onPointerDown);
         canvas.removeEventListener("pointermove", onPointerMove);
         canvas.removeEventListener("pointerup", onPointerUp);
-        canvas.removeEventListener("pointercancel", onTouchCancel);
+        canvas.removeEventListener("pointercancel", onPointerCancel);
       }
     };
   }, [drawActiveStroke, commitStroke, maybeExtend, scrollTo, takeEraserSnapshot]);
