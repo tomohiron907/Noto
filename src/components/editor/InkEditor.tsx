@@ -186,7 +186,17 @@ export default function InkEditor() {
     const scaleX = targetWidth / (doc.canvasWidth || targetWidth);
     const dark = isDarkMode();
     for (const s of doc.strokes) {
-      const color = s.isEraser ? "rgba(0,0,0,1)" : (s.color || (dark ? "#FFFFFF" : "#000000"));
+      let color: string;
+      if (s.isEraser) {
+        color = "rgba(0,0,0,1)";
+      } else {
+        // The default swatch (PEN_COLORS[0]) adapts to the current theme so strokes
+        // written in either light or dark mode stay readable after a theme switch.
+        const isDefault = s.color === PEN_COLORS[0].light || s.color === PEN_COLORS[0].dark;
+        color = isDefault
+          ? (dark ? PEN_COLORS[0].dark : PEN_COLORS[0].light)
+          : (s.color || (dark ? "#FFFFFF" : "#000000"));
+      }
       drawStrokeOnCtx(ctx, s.pts, s.size, color, s.isEraser ?? false, scaleX);
     }
   }, []);
@@ -536,7 +546,7 @@ export default function InkEditor() {
       </div>
 
       {/* Tool palette */}
-      <div className="shrink-0 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
+      <div className="shrink-0 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-3 px-4 py-2 overflow-x-auto">
           {/* Color swatches */}
           <div className="flex items-center gap-1.5">

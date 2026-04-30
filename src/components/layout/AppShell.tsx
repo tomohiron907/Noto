@@ -68,8 +68,12 @@ export default function AppShell() {
 
     const el = document.documentElement;
 
+    const isStylusTouch = (t: Touch) =>
+      (t as Touch & { touchType?: string }).touchType === "stylus";
+
     const onTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
+      if (isStylusTouch(touch)) return;
       touchStartX.current = touch.clientX;
       touchStartY.current = touch.clientY;
       isDraggingFromEdge.current = false;
@@ -81,6 +85,7 @@ export default function AppShell() {
       if (touchStartX.current === null || touchStartY.current === null) return;
 
       const touch = e.touches[0];
+      if (isStylusTouch(touch)) return;
       const deltaX = touch.clientX - touchStartX.current;
       const deltaY = touch.clientY - touchStartY.current;
 
@@ -112,7 +117,9 @@ export default function AppShell() {
       }
     };
 
-    const onTouchEnd = () => {
+    const onTouchEnd = (e: TouchEvent) => {
+      const touch = e.changedTouches[0];
+      if (touch && isStylusTouch(touch)) return;
       const wasDragging = isDraggingFromEdge.current;
       isDraggingFromEdge.current = false;
       gestureClassified.current = false;
