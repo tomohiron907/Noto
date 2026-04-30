@@ -86,6 +86,18 @@ export default function InkEditor() {
   const [canvasHeight, setCanvasHeight] = useState(INITIAL_HEIGHT);
   const [strokeCount, setStrokeCount] = useState(0);
 
+  // Track dark mode changes so stored strokes redraw with the correct color
+  const [isDarkMode, setIsDarkMode] = useState(() =>
+    document.documentElement.classList.contains("dark")
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDarkMode(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   // Mutable refs — not in state to avoid re-renders during drawing
   const inkDocRef = useRef<InkDoc>({
     version: 1,
@@ -124,8 +136,9 @@ export default function InkEditor() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const scaleX = targetWidth / (doc.canvasWidth || targetWidth);
+    const penColor = getPenColor();
     for (const s of doc.strokes) {
-      drawStrokeOnCtx(ctx, s.pts, s.size, s.color, scaleX);
+      drawStrokeOnCtx(ctx, s.pts, s.size, penColor, scaleX);
     }
   }, []);
 
@@ -156,10 +169,10 @@ export default function InkEditor() {
     });
   }, [activeId, activeContent, redrawCommitted]);
 
-  // Redraw when canvas width changes
+  // Redraw when canvas width or dark mode changes
   useEffect(() => {
     redrawCommitted(inkDocRef.current, canvasWidth);
-  }, [canvasWidth, redrawCommitted]);
+  }, [canvasWidth, isDarkMode, redrawCommitted]);
 
   // ---- Manual scroll state ----
   const scrollTopRef = useRef(0);
