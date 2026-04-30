@@ -153,6 +153,9 @@ export default function InkEditor() {
   });
   const currentPts = useRef<[number, number][]>([]);
   const isDrawing = useRef(false);
+  // Offscreen snapshot of committedRef taken at the start of each eraser stroke.
+  // Used to restore+redraw the full stroke on every move, keeping perfect-freehand smooth.
+  const eraserSnapshotRef = useRef<HTMLCanvasElement | null>(null);
 
   // ---- Canvas width (responsive) ----
   const canvasWidthRef = useRef(CANVAS_MAX_WIDTH);
@@ -263,18 +266,53 @@ export default function InkEditor() {
   }, [markDirty]);
 
   // ---- Drawing helpers ----
-  const drawActiveStroke = useCallback(() => {
-    const canvas = activeRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (currentPts.current.length === 0) return;
+
+  // Takes a snapshot of committedRef into an offscreen canvas.
+  // Called once at the start of each eraser stroke so we can restore+redraw each frame.
+  const takeEraserSnapshot = useCallback(() => {
     const committed = committedRef.current;
-    if (committed) ctx.drawImage(committed, 0, 0);
-    const eraser = modeRef.current === "eraser";
-    const size = eraser ? ERASER_SIZE : penSizeRef.current;
-    drawStrokeOnCtx(ctx, currentPts.current, size, penColorRef.current, eraser);
+    if (!committed) return;
+    let snap = eraserSnapshotRef.current;
+    if (!snap || snap.width !== committed.width || snap.height !== committed.height) {
+      snap = document.createElement("canvas");
+      snap.width = committed.width;
+      snap.height = committed.height;
+      eraserSnapshotRef.current = snap;
+    }
+    const snapCtx = snap.getContext("2d");
+    if (snapCtx) {
+      snapCtx.clearRect(0, 0, snap.width, snap.height);
+      snapCtx.drawImage(committed, 0, 0);
+    }
+  }, []);
+
+  const drawActiveStroke = useCallback(() => {
+    if (modeRef.current === "eraser") {
+      // Eraser: write destination-out directly to committedRef so it's visible immediately.
+      // Restore the snapshot first so perfect-freehand can smooth the full accumulated stroke.
+      const committed = committedRef.current;
+      const snap = eraserSnapshotRef.current;
+      if (!committed || !snap) return;
+      const ctx = committed.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, committed.width, committed.height);
+      ctx.drawImage(snap, 0, 0);
+      if (currentPts.current.length > 0) {
+        drawStrokeOnCtx(ctx, currentPts.current, ERASER_SIZE, "rgba(0,0,0,1)", true);
+      }
+      // Keep activeRef fully transparent so committedRef shows through unobstructed.
+      const actCtx = activeRef.current?.getContext("2d");
+      if (actCtx) actCtx.clearRect(0, 0, actCtx.canvas.width, actCtx.canvas.height);
+    } else {
+      // Pen: draw only the in-progress stroke on activeRef (committedRef shows below).
+      const canvas = activeRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (currentPts.current.length === 0) return;
+      drawStrokeOnCtx(ctx, currentPts.current, penSizeRef.current, penColorRef.current, false);
+    }
   }, []);
 
   const commitStroke = useCallback(() => {
@@ -287,13 +325,17 @@ export default function InkEditor() {
       isEraser: eraser || undefined,
     };
     inkDocRef.current.strokes.push(stroke);
-    drawStrokeOnCtx(
-      committedRef.current!.getContext("2d")!,
-      stroke.pts,
-      stroke.size,
-      stroke.color,
-      stroke.isEraser ?? false,
-    );
+    if (!eraser) {
+      // Pen: commit the stroke to committedRef now.
+      drawStrokeOnCtx(
+        committedRef.current!.getContext("2d")!,
+        stroke.pts,
+        stroke.size,
+        stroke.color,
+        false,
+      );
+    }
+    // Eraser: committedRef already has the correct final state from real-time drawing.
     const actCtx = activeRef.current?.getContext("2d");
     actCtx?.clearRect(0, 0, actCtx.canvas.width, actCtx.canvas.height);
     currentPts.current = [];
@@ -333,6 +375,7 @@ export default function InkEditor() {
         e.preventDefault();
         isDrawing.current = true;
         fingerStartYRef.current = null;
+        if (modeRef.current === "eraser") takeEraserSnapshot();
         const [x, y] = getCoords(touch.clientX, touch.clientY);
         currentPts.current = [[x, y]];
         drawActiveStroke();
@@ -375,6 +418,17 @@ export default function InkEditor() {
       if (!isDrawing.current) return;
       isDrawing.current = false;
       currentPts.current = [];
+      // Restore committed canvas if the eraser was in mid-stroke.
+      if (modeRef.current === "eraser" && eraserSnapshotRef.current) {
+        const committed = committedRef.current;
+        if (committed) {
+          const ctx = committed.getContext("2d");
+          if (ctx) {
+            ctx.clearRect(0, 0, committed.width, committed.height);
+            ctx.drawImage(eraserSnapshotRef.current, 0, 0);
+          }
+        }
+      }
       const actCtx = activeRef.current?.getContext("2d");
       actCtx?.clearRect(0, 0, actCtx.canvas.width, actCtx.canvas.height);
     };
@@ -386,6 +440,7 @@ export default function InkEditor() {
       e.preventDefault();
       isDrawing.current = true;
       canvas?.setPointerCapture(e.pointerId);
+      if (modeRef.current === "eraser") takeEraserSnapshot();
       const [x, y] = getCoords(e.clientX, e.clientY);
       currentPts.current = [[x, y]];
       drawActiveStroke();
@@ -431,7 +486,7 @@ export default function InkEditor() {
         canvas.removeEventListener("pointercancel", onTouchCancel);
       }
     };
-  }, [drawActiveStroke, commitStroke, maybeExtend, scrollTo]);
+  }, [drawActiveStroke, commitStroke, maybeExtend, scrollTo, takeEraserSnapshot]);
 
   const statusText = syncing ? "Saving…" : dirty ? "Unsaved" : "Saved";
 
