@@ -252,10 +252,12 @@ export default function InkEditor() {
     });
   }, [activeId, activeContent, redrawCommitted]);
 
-  // Redraw when canvas width or dark mode changes
+  // Redraw when canvas width, dark mode, or canvas height changes.
+  // canvasHeight must be included: changing it clears the canvas (React updates
+  // the height attribute), so we need to redraw after that commit.
   useEffect(() => {
     redrawCommitted(inkDocRef.current, canvasWidth);
-  }, [canvasWidth, isDark, redrawCommitted]);
+  }, [canvasWidth, isDark, canvasHeight, redrawCommitted]);
 
   // ---- Apple Pencil double-tap (native iOS dispatches this event) ----
   useEffect(() => {
