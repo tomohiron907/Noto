@@ -126,6 +126,7 @@ export default function InkEditor() {
   const [penSize, setPenSize] = useState(4);
   const [mode, setMode] = useState<"pen" | "eraser">("pen");
   const [zoom, setZoom] = useState(1.0);
+  const [transformOriginX, setTransformOriginX] = useState("50%");
   // Keep mutable refs for use inside event handlers without stale closures
   const penColorRef = useRef(penColor);
   const penSizeRef = useRef(penSize);
@@ -167,8 +168,9 @@ export default function InkEditor() {
   const pinchStateRef = useRef<{
     startDist: number;
     startZoom: number;
-    pinchViewY: number;
+    canvasPinchY: number;
     startScrollTop: number;
+    pinchLocalX: number;
   } | null>(null);
   const zoomOuterRef = useRef<HTMLDivElement>(null);
   const zoomInnerRef = useRef<HTMLDivElement>(null);
@@ -441,14 +443,23 @@ export default function InkEditor() {
           fingerStartYRef.current = null;
           const [t0, t1] = allFingers;
           const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+          const midClientX = (t0.clientX + t1.clientX) / 2;
           const midClientY = (t0.clientY + t1.clientY) / 2;
-          const containerTop = container.getBoundingClientRect().top;
+          const outerRect = zoomOuterRef.current?.getBoundingClientRect() ?? container.getBoundingClientRect();
+          const pinchLocalX = midClientX - outerRect.left;
+          // canvasPinchY: Y distance from the canvas div's viewport top to the pinch midpoint.
+          // Used in scroll formula: newScrollTop = startScrollTop + canvasPinchY * (newZoom/startZoom - 1)
+          const canvasPinchY = midClientY - outerRect.top;
           pinchStateRef.current = {
             startDist: dist,
             startZoom: zoomRef.current,
-            pinchViewY: midClientY - containerTop,
+            canvasPinchY,
             startScrollTop: scrollTopRef.current,
+            pinchLocalX,
           };
+          setTransformOriginX(`${pinchLocalX}px`);
+          const innerEl = zoomInnerRef.current;
+          if (innerEl) innerEl.style.transformOrigin = `${pinchLocalX}px 0px`;
         } else {
           fingerStartYRef.current = touch.clientY;
           fingerScrollStartRef.current = scrollTopRef.current;
@@ -479,17 +490,17 @@ export default function InkEditor() {
           e.preventDefault();
           const [t0, t1] = allFingers;
           const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-          const { startDist, startZoom, pinchViewY, startScrollTop } = pinchStateRef.current;
-          const newZoom = Math.max(0.5, Math.min(3.0, startZoom * (dist / startDist)));
-          // Keep the pinch center at the same viewport position:
-          // canvasY at pinch center = (pinchViewY + startScrollTop) / startZoom
-          // after zoom: canvasY * newZoom - newScrollTop = pinchViewY
-          const newScrollTop = (pinchViewY + startScrollTop) * (newZoom / startZoom) - pinchViewY;
+          const { startDist, startZoom, canvasPinchY, startScrollTop, pinchLocalX } = pinchStateRef.current;
+          const newZoom = Math.max(1.0, Math.min(3.0, startZoom * (dist / startDist)));
+          const newScrollTop = startScrollTop + canvasPinchY * (newZoom / startZoom - 1);
           // Update DOM imperatively so scrollHeight reflects newZoom before scrollTo clamps
           const outer = zoomOuterRef.current;
           const inner = zoomInnerRef.current;
           if (outer) outer.style.height = `${inkDocRef.current.height * newZoom}px`;
-          if (inner) inner.style.transform = `scale(${newZoom})`;
+          if (inner) {
+            inner.style.transform = `scale(${newZoom})`;
+            inner.style.transformOrigin = `${pinchLocalX}px 0px`;
+          }
           zoomRef.current = newZoom;
           setZoom(newZoom);
           scrollTo(newScrollTop);
@@ -622,7 +633,7 @@ export default function InkEditor() {
                 ref={zoomInnerRef}
                 style={{
                   transform: `scale(${zoom})`,
-                  transformOrigin: "top center",
+                  transformOrigin: `${transformOriginX} 0px`,
                   position: "absolute",
                   top: 0,
                   left: 0,
@@ -719,7 +730,7 @@ export default function InkEditor() {
           <div className="ml-auto flex items-center gap-3 shrink-0 text-xs text-gray-400">
             {zoom !== 1.0 && (
               <button
-                onClick={() => { setZoom(1.0); zoomRef.current = 1.0; }}
+                onClick={() => { setZoom(1.0); zoomRef.current = 1.0; setTransformOriginX("50%"); }}
                 className="text-blue-500 hover:text-blue-600 font-medium"
                 title="Reset zoom"
               >
