@@ -408,6 +408,17 @@ export default function InkEditor() {
   }, []);
 
   useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      scrollTo(scrollTopRef.current + e.deltaY);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [scrollTo]);
+
+  useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
 
