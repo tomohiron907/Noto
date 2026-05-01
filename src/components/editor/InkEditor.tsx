@@ -131,11 +131,14 @@ export default function InkEditor() {
   const [eraserCursor, setEraserCursor] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(1.0);
   const [transformOriginX, setTransformOriginX] = useState("50%");
+  const [panX, setPanX] = useState(0);
   // Keep mutable refs for use inside event handlers without stale closures
   const penColorRef = useRef(penColor);
   const penSizeRef = useRef(penSize);
   const modeRef = useRef(mode);
   const zoomRef = useRef(zoom);
+  const panXRef = useRef(0);
+  const transformOriginXPxRef = useRef(0);
   useEffect(() => { penColorRef.current = penColor; }, [penColor]);
   useEffect(() => { penSizeRef.current = penSize; }, [penSize]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
@@ -264,7 +267,9 @@ export default function InkEditor() {
   // ---- Manual scroll state ----
   const scrollTopRef = useRef(0);
   const fingerStartYRef = useRef<number | null>(null);
+  const fingerStartXRef = useRef<number | null>(null);
   const fingerScrollStartRef = useRef(0);
+  const fingerPanStartRef = useRef(0);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -412,6 +417,7 @@ export default function InkEditor() {
 
     const cancelStroke = () => {
       fingerStartYRef.current = null;
+      fingerStartXRef.current = null;
       if (!isDrawing.current) return;
       isDrawing.current = false;
       currentPts.current = [];
@@ -464,12 +470,18 @@ export default function InkEditor() {
             startScrollTop: scrollTopRef.current,
             pinchLocalX,
           };
+          transformOriginXPxRef.current = pinchLocalX;
+          panXRef.current = 0;
+          setPanX(0);
           setTransformOriginX(`${pinchLocalX}px`);
           const innerEl = zoomInnerRef.current;
           if (innerEl) innerEl.style.transformOrigin = `${pinchLocalX}px 0px`;
         } else {
           fingerStartYRef.current = touch.clientY;
+          fingerStartXRef.current = touch.clientX;
           fingerScrollStartRef.current = scrollTopRef.current;
+          fingerPanStartRef.current = panXRef.current;
+          if (zoomRef.current > 1.0) e.stopPropagation();
         }
       }
     };
@@ -509,8 +521,12 @@ export default function InkEditor() {
           const inner = zoomInnerRef.current;
           if (outer) outer.style.height = `${inkDocRef.current.height * newZoom}px`;
           if (inner) {
-            inner.style.transform = `scale(${newZoom})`;
+            inner.style.transform = `translateX(${-panXRef.current}px) scale(${newZoom})`;
             inner.style.transformOrigin = `${pinchLocalX}px 0px`;
+          }
+          if (newZoom === 1.0) {
+            panXRef.current = 0;
+            setPanX(0);
           }
           zoomRef.current = newZoom;
           setZoom(newZoom);
@@ -519,8 +535,26 @@ export default function InkEditor() {
         }
         if (fingerStartYRef.current === null) return;
         e.preventDefault();
-        const delta = fingerStartYRef.current - touch.clientY;
-        scrollTo(fingerScrollStartRef.current + delta);
+        const z = zoomRef.current;
+        if (z > 1.0 && fingerStartXRef.current !== null) {
+          e.stopPropagation();
+          const deltaX = touch.clientX - fingerStartXRef.current;
+          const deltaY = fingerStartYRef.current - touch.clientY;
+          scrollTo(fingerScrollStartRef.current + deltaY);
+          const ox = transformOriginXPxRef.current;
+          const vpWidth = zoomOuterRef.current?.getBoundingClientRect().width ?? canvasWidthRef.current;
+          const panXMin = ox * (1 - z);
+          const panXMax = (vpWidth - ox) * (z - 1);
+          const rawPanX = fingerPanStartRef.current - deltaX;
+          const newPanX = Math.max(panXMin, Math.min(panXMax, rawPanX));
+          panXRef.current = newPanX;
+          setPanX(newPanX);
+          const inner = zoomInnerRef.current;
+          if (inner) inner.style.transform = `translateX(${-newPanX}px) scale(${z})`;
+        } else {
+          const delta = fingerStartYRef.current - touch.clientY;
+          scrollTo(fingerScrollStartRef.current + delta);
+        }
       }
     };
 
@@ -538,6 +572,7 @@ export default function InkEditor() {
           pinchStateRef.current = null;
         }
         fingerStartYRef.current = null;
+        fingerStartXRef.current = null;
       }
     };
 
@@ -644,7 +679,7 @@ export default function InkEditor() {
               <div
                 ref={zoomInnerRef}
                 style={{
-                  transform: `scale(${zoom})`,
+                  transform: `translateX(${-panX}px) scale(${zoom})`,
                   transformOrigin: `${transformOriginX} 0px`,
                   position: "absolute",
                   top: 0,
@@ -805,7 +840,7 @@ export default function InkEditor() {
           <div className="ml-auto flex items-center gap-3 shrink-0 text-xs text-gray-400">
             {zoom !== 1.0 && (
               <button
-                onClick={() => { setZoom(1.0); zoomRef.current = 1.0; setTransformOriginX("50%"); }}
+                onClick={() => { setZoom(1.0); zoomRef.current = 1.0; setTransformOriginX("50%"); setPanX(0); panXRef.current = 0; }}
                 className="text-gray-600 dark:text-gray-300 font-medium"
                 title="Reset zoom"
               >
