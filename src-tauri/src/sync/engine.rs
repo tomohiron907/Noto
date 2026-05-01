@@ -65,7 +65,7 @@ pub async fn initial_import(app: &AppHandle, db_state: &SyncDb) -> Result<()> {
     }
 
     // Import all folders recursively
-    import_folders(&client, &root_drive_id, db_state).await?;
+    let seen_folder_ids = import_folders(&client, &root_drive_id, db_state).await?;
 
     // Resolve parent local IDs for folders
     {
@@ -74,12 +74,35 @@ pub async fn initial_import(app: &AppHandle, db_state: &SyncDb) -> Result<()> {
     }
 
     // Import all notes metadata (content fetched lazily on open)
-    import_notes_metadata(&client, &root_drive_id, db_state).await?;
+    let seen_note_ids = import_notes_metadata(&client, &root_drive_id, db_state).await?;
 
     // Resolve note parent local IDs
     {
         let conn = db_state.conn.lock().unwrap();
         db::resolve_note_parent_local_ids(&conn)?;
+    }
+
+    // Reconcile: soft-delete local records that no longer exist on Drive
+    if !seen_note_ids.is_empty() || !seen_folder_ids.is_empty() {
+        let mut all_folder_ids = seen_folder_ids;
+        all_folder_ids.push(root_drive_id.clone());
+
+        let conn = db_state.conn.lock().unwrap();
+
+        if !seen_note_ids.is_empty() {
+            let deleted = db::reconcile_delete_orphaned_notes(&conn, &seen_note_ids)?;
+            if !deleted.is_empty() {
+                log::info!("[initial_import] removed {} orphaned notes", deleted.len());
+            }
+        }
+
+        let orphan_folders = db::get_orphaned_folder_local_ids(&conn, &all_folder_ids)?;
+        for fid in &orphan_folders {
+            db::soft_delete_folder(&conn, fid)?;
+        }
+        if !orphan_folders.is_empty() {
+            log::info!("[initial_import] removed {} orphaned folders", orphan_folders.len());
+        }
     }
 
     // Get initial Changes page token for future incremental syncs
@@ -92,8 +115,9 @@ async fn import_folders(
     client: &DriveClient,
     root_drive_id: &str,
     db_state: &SyncDb,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     let mut queue = vec![root_drive_id.to_string()];
+    let mut seen_ids: Vec<String> = Vec::new();
 
     while !queue.is_empty() {
         let batch: Vec<String> = queue.drain(..).collect();
@@ -128,17 +152,18 @@ async fn import_folders(
         for f in resp.files {
             let parent_drive_id = f.parents.as_ref().and_then(|p| p.first()).map(|s| s.as_str());
             db::upsert_folder_by_drive_id(&conn, &f.id, &f.name, parent_drive_id)?;
+            seen_ids.push(f.id.clone());
             queue.push(f.id);
         }
     }
-    Ok(())
+    Ok(seen_ids)
 }
 
 async fn import_notes_metadata(
     client: &DriveClient,
     root_drive_id: &str,
     db_state: &SyncDb,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     // Collect all folder drive IDs
     let folder_drive_ids: Vec<String> = {
         let conn = db_state.conn.lock().unwrap();
@@ -161,6 +186,8 @@ async fn import_notes_metadata(
         modified_time: String,
         parents: Option<Vec<String>>,
     }
+
+    let mut seen_ids: Vec<String> = Vec::new();
 
     for chunk in folder_drive_ids.chunks(60) {
         let parent_clauses = chunk
@@ -193,9 +220,10 @@ async fn import_notes_metadata(
                 f.name.trim_end_matches(".md")
             };
             db::upsert_note_by_drive_id(&conn, &f.id, title, parent_drive_id, &f.modified_time, note_type).map(|_| ())?;
+            seen_ids.push(f.id);
         }
     }
-    Ok(())
+    Ok(seen_ids)
 }
 
 async fn ensure_root_folder(client: &DriveClient) -> Result<String> {

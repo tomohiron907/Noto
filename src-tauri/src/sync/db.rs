@@ -562,6 +562,71 @@ pub fn get_folder_drive_id(conn: &Connection, local_id: &str) -> Result<Option<S
         .flatten())
 }
 
+pub fn reconcile_delete_orphaned_notes(
+    conn: &Connection,
+    seen_drive_ids: &[String],
+) -> Result<Vec<String>> {
+    if seen_drive_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let placeholders = seen_drive_ids.iter().enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let select_sql = format!(
+        "SELECT local_id FROM notes \
+         WHERE drive_id IS NOT NULL AND dirty = 0 AND deleted = 0 \
+         AND drive_id NOT IN ({})",
+        placeholders
+    );
+    let local_ids: Vec<String> = {
+        let mut stmt = conn.prepare(&select_sql)?;
+        let rows = stmt.query_map(
+            rusqlite::params_from_iter(seen_drive_ids.iter()),
+            |r| r.get(0),
+        )?;
+        rows.collect::<std::result::Result<_, _>>()?
+    };
+    if local_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let id_placeholders = local_ids.iter().enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let update_sql = format!(
+        "UPDATE notes SET deleted = 1, dirty = 1 WHERE local_id IN ({})",
+        id_placeholders
+    );
+    conn.execute(&update_sql, rusqlite::params_from_iter(local_ids.iter()))?;
+    Ok(local_ids)
+}
+
+pub fn get_orphaned_folder_local_ids(
+    conn: &Connection,
+    seen_drive_ids: &[String],
+) -> Result<Vec<String>> {
+    if seen_drive_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let placeholders = seen_drive_ids.iter().enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT local_id FROM folders \
+         WHERE drive_id IS NOT NULL AND deleted = 0 \
+         AND drive_id NOT IN ({})",
+        placeholders
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params_from_iter(seen_drive_ids.iter()),
+        |r| r.get(0),
+    )?;
+    Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
