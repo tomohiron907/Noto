@@ -128,6 +128,7 @@ export default function InkEditor() {
   const colorBtnRef = useRef<HTMLButtonElement>(null);
   const sizeBtnRef = useRef<HTMLButtonElement>(null);
   const [mode, setMode] = useState<"pen" | "eraser">("pen");
+  const [eraserCursor, setEraserCursor] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(1.0);
   const [transformOriginX, setTransformOriginX] = useState("50%");
   // Keep mutable refs for use inside event handlers without stale closures
@@ -435,7 +436,10 @@ export default function InkEditor() {
         stylusTouchActiveRef.current = true;
         isDrawing.current = true;
         fingerStartYRef.current = null;
-        if (modeRef.current === "eraser") takeEraserSnapshot();
+        if (modeRef.current === "eraser") {
+          takeEraserSnapshot();
+          setEraserCursor({ x: touch.clientX, y: touch.clientY });
+        }
         const [x, y] = getCoords(touch.clientX, touch.clientY);
         currentPts.current = [[x, y]];
         drawActiveStroke();
@@ -480,8 +484,12 @@ export default function InkEditor() {
             touch.clientY < 0 || touch.clientY > window.innerHeight) {
           stylusTouchActiveRef.current = false;
           isDrawing.current = false;
+          setEraserCursor(null);
           commitStroke();
           return;
+        }
+        if (modeRef.current === "eraser") {
+          setEraserCursor({ x: touch.clientX, y: touch.clientY });
         }
         const [x, y] = getCoords(touch.clientX, touch.clientY);
         currentPts.current.push([x, y]);
@@ -520,6 +528,7 @@ export default function InkEditor() {
       const touch = e.changedTouches[0];
       if (isStylusTouch(touch)) {
         stylusTouchActiveRef.current = false;
+        setEraserCursor(null);
         if (!isDrawing.current) return;
         isDrawing.current = false;
         commitStroke();
@@ -644,7 +653,14 @@ export default function InkEditor() {
                   height: canvasHeight,
                 }}
               >
-                <div className="relative w-full" style={{ height: canvasHeight }}>
+                <div
+                  className="relative w-full"
+                  style={{
+                    height: canvasHeight,
+                    borderLeft: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(0,0,0,0.06)",
+                    borderRight: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(0,0,0,0.06)",
+                  }}
+                >
                   <canvas
                     ref={committedRef}
                     width={canvasWidth * getDpr()}
@@ -665,6 +681,25 @@ export default function InkEditor() {
           )}
         </div>
       </div>
+
+      {/* Eraser cursor overlay */}
+      {eraserCursor && (
+        <div
+          style={{
+            position: "fixed",
+            left: eraserCursor.x,
+            top: eraserCursor.y,
+            width: ERASER_SIZE * zoomRef.current,
+            height: ERASER_SIZE * zoomRef.current,
+            transform: "translate(-50%, -50%)",
+            borderRadius: "50%",
+            border: "1.5px solid rgba(100,100,100,0.7)",
+            backgroundColor: "rgba(200,200,200,0.15)",
+            pointerEvents: "none",
+            zIndex: 9998,
+          }}
+        />
+      )}
 
       {/* Tool palette */}
       <div className="shrink-0 border-t border-gray-100 dark:border-gray-800">
