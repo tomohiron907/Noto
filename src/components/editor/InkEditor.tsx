@@ -132,6 +132,7 @@ export default function InkEditor() {
   const [zoom, setZoom] = useState(1.0);
   const [transformOriginX, setTransformOriginX] = useState("50%");
   const [panX, setPanX] = useState(0);
+  const [displayScale, setDisplayScale] = useState(1);
   // Keep mutable refs for use inside event handlers without stale closures
   const penColorRef = useRef(penColor);
   const penSizeRef = useRef(penSize);
@@ -187,17 +188,22 @@ export default function InkEditor() {
   const [canvasWidth, setCanvasWidthState] = useState(CANVAS_MAX_WIDTH);
 
   const measureWidth = useCallback(() => {
-    const el = committedRef.current;
-    if (!el) return;
-    const w = Math.min(el.parentElement?.clientWidth ?? CANVAS_MAX_WIDTH, CANVAS_MAX_WIDTH);
-    canvasWidthRef.current = w;
-    setCanvasWidthState(w);
+    // Use the title textarea as the measurement anchor — it is always mounted
+    // (unlike the canvas which is hidden during loading), and has the same w-full
+    // width as the canvas area inside the same padding container.
+    const title = titleRef.current;
+    if (!title) return;
+    const parentWidth = title.clientWidth;
+    const scale = Math.min(parentWidth / CANVAS_MAX_WIDTH, 1);
+    canvasWidthRef.current = CANVAS_MAX_WIDTH;
+    setCanvasWidthState(CANVAS_MAX_WIDTH);
+    setDisplayScale(scale);
   }, []);
 
   useEffect(() => {
     measureWidth();
     const ro = new ResizeObserver(measureWidth);
-    if (committedRef.current?.parentElement) ro.observe(committedRef.current.parentElement);
+    if (titleRef.current) ro.observe(titleRef.current);
     return () => ro.disconnect();
   }, [measureWidth]);
 
@@ -692,7 +698,7 @@ export default function InkEditor() {
             </div>
           ) : (
             // Outer div reserves the correct scrollable height for the zoomed canvas
-            <div ref={zoomOuterRef} style={{ height: canvasHeight * zoom, position: "relative" }}>
+            <div ref={zoomOuterRef} style={{ height: canvasHeight * displayScale * zoom, position: "relative" }}>
               <div
                 ref={zoomInnerRef}
                 style={{
@@ -702,30 +708,30 @@ export default function InkEditor() {
                   top: 0,
                   left: 0,
                   right: 0,
-                  height: canvasHeight,
+                  height: canvasHeight * displayScale,
                 }}
               >
                 <div
                   className="relative w-full"
                   style={{
-                    height: canvasHeight,
+                    height: canvasHeight * displayScale,
                     borderLeft: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(0,0,0,0.06)",
                     borderRight: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(0,0,0,0.06)",
                   }}
                 >
                   <canvas
                     ref={committedRef}
-                    width={canvasWidth * getDpr()}
+                    width={CANVAS_MAX_WIDTH * getDpr()}
                     height={canvasHeight * getDpr()}
                     className="absolute inset-0 pointer-events-none"
-                    style={{ width: "100%", height: canvasHeight, background: "transparent" }}
+                    style={{ width: "100%", height: canvasHeight * displayScale, background: "transparent" }}
                   />
                   <canvas
                     ref={activeRef}
-                    width={canvasWidth * getDpr()}
+                    width={CANVAS_MAX_WIDTH * getDpr()}
                     height={canvasHeight * getDpr()}
                     className="absolute inset-0"
-                    style={{ width: "100%", height: canvasHeight, background: "transparent" }}
+                    style={{ width: "100%", height: canvasHeight * displayScale, background: "transparent" }}
                   />
                 </div>
               </div>
