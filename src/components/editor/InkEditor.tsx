@@ -578,7 +578,9 @@ export default function InkEditor() {
         setEraserCursor(null);
         if (!isDrawing.current) return;
         isDrawing.current = false;
+        const wasEraser = modeRef.current === "eraser";
         commitStroke();
+        if (wasEraser) setMode("pen");
       } else {
         const remainingFingers = Array.from(e.touches).filter(t => !isStylusTouch(t));
         if (remainingFingers.length < 2) {
@@ -626,7 +628,9 @@ export default function InkEditor() {
       if (stylusTouchActiveRef.current) return;
       if (!isDrawing.current) return;
       isDrawing.current = false;
+      const wasEraser = modeRef.current === "eraser";
       commitStroke();
+      if (wasEraser) setMode("pen");
     };
 
     const onPointerCancel = () => {
