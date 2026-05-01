@@ -35,10 +35,9 @@ const PEN_COLORS = [
 ] as const;
 
 const PEN_SIZES = [
-  { label: "S", size: 2 },
-  { label: "M", size: 4 },
-  { label: "L", size: 8 },
-  { label: "XL", size: 16 },
+  { label: "S", size: 1 },
+  { label: "M", size: 2 },
+  { label: "L", size: 4 },
 ] as const;
 
 function isDarkMode(): boolean {
@@ -123,7 +122,11 @@ export default function InkEditor() {
 
   // ---- Tool state ----
   const [penColor, setPenColor] = useState(getDefaultColor);
-  const [penSize, setPenSize] = useState(4);
+  const [penSize, setPenSize] = useState(2);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [sizePaletteOpen, setSizePaletteOpen] = useState(false);
+  const colorBtnRef = useRef<HTMLButtonElement>(null);
+  const sizeBtnRef = useRef<HTMLButtonElement>(null);
   const [mode, setMode] = useState<"pen" | "eraser">("pen");
   const [zoom, setZoom] = useState(1.0);
   const [transformOriginX, setTransformOriginX] = useState("50%");
@@ -666,55 +669,93 @@ export default function InkEditor() {
       {/* Tool palette */}
       <div className="shrink-0 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-3 px-4 py-2 overflow-x-auto">
-          {/* Color swatches */}
-          <div className="flex items-center gap-1.5">
-            {PEN_COLORS.map((c) => {
-              const colorVal = isDark ? c.dark : c.light;
-              const active = mode === "pen" && penColor === colorVal;
+
+          {/* Color — single dot; popup swatches on tap */}
+          <div className="shrink-0">
+            <button
+              ref={colorBtnRef}
+              onClick={() => { setColorPickerOpen(o => !o); setSizePaletteOpen(false); }}
+              className="w-5 h-5 rounded-full ring-1 ring-gray-300 dark:ring-gray-600 ring-offset-1 ring-offset-white dark:ring-offset-gray-900"
+              style={{ backgroundColor: penColor }}
+            />
+            {colorPickerOpen && (() => {
+              const r = colorBtnRef.current?.getBoundingClientRect();
+              const top = r ? r.top - 8 : 0;
+              const left = r ? r.left : 0;
               return (
-                <button
-                  key={c.label}
-                  title={c.label}
-                  onClick={() => { setPenColor(colorVal); setMode("pen"); }}
-                  className={`w-6 h-6 rounded-full border-2 transition-transform ${
-                    active
-                      ? "border-blue-500 scale-110"
-                      : "border-transparent hover:scale-110"
-                  }`}
-                  style={{ backgroundColor: colorVal }}
-                />
+                <div
+                  style={{ position: "fixed", top, left, transform: "translateY(-100%)", zIndex: 9999 }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-gray-900 shadow-lg border border-gray-200 dark:border-gray-700"
+                >
+                  {PEN_COLORS.map((c) => {
+                    const colorVal = isDark ? c.dark : c.light;
+                    const active = penColor === colorVal;
+                    return (
+                      <button
+                        key={c.label}
+                        title={c.label}
+                        onClick={() => { setPenColor(colorVal); setMode("pen"); setColorPickerOpen(false); }}
+                        className={`w-6 h-6 rounded-full border-2 transition-transform ${
+                          active
+                            ? "border-gray-800 dark:border-gray-100 scale-110"
+                            : "border-transparent hover:scale-110"
+                        }`}
+                        style={{ backgroundColor: colorVal }}
+                      />
+                    );
+                  })}
+                </div>
               );
-            })}
+            })()}
           </div>
 
           <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 shrink-0" />
 
-          {/* Size buttons */}
-          <div className="flex items-center gap-1">
-            {PEN_SIZES.map((s) => (
-              <button
-                key={s.label}
-                onClick={() => { setPenSize(s.size); setMode("pen"); }}
-                className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                  mode === "pen" && penSize === s.size
-                    ? "bg-blue-500 text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+          {/* Size — current label; popup options on tap */}
+          <div className="shrink-0">
+            <button
+              ref={sizeBtnRef}
+              onClick={() => { setSizePaletteOpen(o => !o); setColorPickerOpen(false); }}
+              className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              {PEN_SIZES.find(s => s.size === penSize)?.label ?? "M"}
+            </button>
+            {sizePaletteOpen && (() => {
+              const r = sizeBtnRef.current?.getBoundingClientRect();
+              const top = r ? r.top - 8 : 0;
+              const left = r ? r.left : 0;
+              return (
+                <div
+                  style={{ position: "fixed", top, left, transform: "translateY(-100%)", zIndex: 9999 }}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-white dark:bg-gray-900 shadow-lg border border-gray-200 dark:border-gray-700"
+                >
+                  {PEN_SIZES.map((s) => (
+                    <button
+                      key={s.label}
+                      onClick={() => { setPenSize(s.size); setMode("pen"); setSizePaletteOpen(false); }}
+                      className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                        penSize === s.size
+                          ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
+                          : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 shrink-0" />
 
           {/* Eraser */}
           <button
-            onClick={() => setMode(m => m === "eraser" ? "pen" : "eraser")}
+            onClick={() => { setMode(m => m === "eraser" ? "pen" : "eraser"); setColorPickerOpen(false); setSizePaletteOpen(false); }}
             title="Eraser (or double-tap Apple Pencil)"
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+            className={`p-1.5 rounded-md transition-colors ${
               mode === "eraser"
-                ? "bg-amber-500 text-white"
+                ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
                 : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
             }`}
           >
@@ -723,7 +764,6 @@ export default function InkEditor() {
               <path d="M22 21H7" />
               <path d="m5 11 9 9" />
             </svg>
-            Erase
           </button>
 
           {/* Spacer + zoom + status */}
@@ -731,14 +771,14 @@ export default function InkEditor() {
             {zoom !== 1.0 && (
               <button
                 onClick={() => { setZoom(1.0); zoomRef.current = 1.0; setTransformOriginX("50%"); }}
-                className="text-blue-500 hover:text-blue-600 font-medium"
+                className="text-gray-600 dark:text-gray-300 font-medium"
                 title="Reset zoom"
               >
                 {Math.round(zoom * 100)}%
               </button>
             )}
             <span>{strokeCount} strokes</span>
-            <span className={syncing ? "text-blue-500" : dirty ? "text-amber-500" : ""}>
+            <span className={syncing ? "text-gray-600 dark:text-gray-300" : dirty ? "text-gray-500 dark:text-gray-400" : ""}>
               {statusText}
             </span>
           </div>
