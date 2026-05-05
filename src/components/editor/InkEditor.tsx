@@ -173,6 +173,15 @@ export default function InkEditor() {
   // Offscreen snapshot of committedRef taken at the start of each eraser stroke.
   // Used to restore+redraw the full stroke on every move, keeping perfect-freehand smooth.
   const eraserSnapshotRef = useRef<HTMLCanvasElement | null>(null);
+  // Cache of Path2D geometries for committed strokes (keyed by index).
+  // Avoids re-running getStroke() on every redrawCommitted call.
+  const pathCacheRef = useRef<Map<number, Path2D>>(new Map());
+  const pathCacheScaleXRef = useRef<number>(1);
+  // Snapshot of committed canvas saved just before a canvas-height extension.
+  // On the next redraw effect, we restore this instead of re-drawing all strokes.
+  const canvasExtendSnapRef = useRef<HTMLCanvasElement | null>(null);
+  // rAF guard — prevents scheduling more than one drawActiveStroke per frame.
+  const rafPendingRef = useRef(false);
   const pinchStateRef = useRef<{
     startDist: number;
     startZoom: number;
@@ -215,8 +224,27 @@ export default function InkEditor() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const scaleX = targetWidth / (doc.canvasWidth || targetWidth);
+    const dpr = getDpr();
     const dark = isDarkMode();
-    for (const s of doc.strokes) {
+
+    // Invalidate Path2D cache when scaleX changes (e.g. window resize)
+    if (pathCacheScaleXRef.current !== scaleX) {
+      pathCacheRef.current.clear();
+      pathCacheScaleXRef.current = scaleX;
+    }
+
+    for (let i = 0; i < doc.strokes.length; i++) {
+      const s = doc.strokes[i];
+
+      // Reuse cached Path2D when available; compute and cache otherwise
+      let path = pathCacheRef.current.get(i);
+      if (!path) {
+        const scaledPts = s.pts.map(([x, y]) => [x * scaleX * dpr, y * dpr] as [number, number]);
+        const outline = getStroke(scaledPts, { ...FREEHAND_OPTIONS, size: s.size * scaleX * dpr });
+        path = outline.length > 0 ? new Path2D(svgPathFromStroke(outline)) : new Path2D();
+        pathCacheRef.current.set(i, path);
+      }
+
       let color: string;
       if (s.isEraser) {
         color = "rgba(0,0,0,1)";
@@ -228,7 +256,17 @@ export default function InkEditor() {
           ? (dark ? PEN_COLORS[0].dark : PEN_COLORS[0].light)
           : (s.color || (dark ? "#FFFFFF" : "#000000"));
       }
-      drawStrokeOnCtx(ctx, s.pts, s.size, color, s.isEraser ?? false, scaleX);
+
+      if (s.isEraser) {
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = "rgba(0,0,0,1)";
+        ctx.fill(path);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = color;
+        ctx.fill(path);
+      }
     }
   }, []);
 
@@ -262,6 +300,20 @@ export default function InkEditor() {
   // canvasHeight must be included: changing it clears the canvas (React updates
   // the height attribute), so we need to redraw after that commit.
   useEffect(() => {
+    const snap = canvasExtendSnapRef.current;
+    if (snap) {
+      // Canvas was extended — restore saved bitmap instead of re-drawing all strokes.
+      canvasExtendSnapRef.current = null;
+      const committed = committedRef.current;
+      if (committed) {
+        const ctx = committed.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, committed.width, committed.height);
+          ctx.drawImage(snap, 0, 0);
+        }
+      }
+      return;
+    }
     redrawCommitted(inkDocRef.current, canvasWidth);
   }, [canvasWidth, isDark, canvasHeight, redrawCommitted]);
 
@@ -301,6 +353,19 @@ export default function InkEditor() {
     if (y > currentH - EXTEND_THRESHOLD) {
       const newH = currentH + EXTEND_BY;
       inkDocRef.current.height = newH;
+
+      // Save committed canvas content before React clears it by updating height attr.
+      const committed = committedRef.current;
+      if (committed) {
+        let snap = canvasExtendSnapRef.current;
+        if (!snap || snap.width !== committed.width || snap.height !== committed.height) {
+          snap = document.createElement("canvas");
+          snap.width = committed.width;
+          snap.height = committed.height;
+          canvasExtendSnapRef.current = snap;
+        }
+        snap.getContext("2d")?.drawImage(committed, 0, 0);
+      }
       setCanvasHeight(newH);
     }
   }, []);
@@ -354,8 +419,21 @@ export default function InkEditor() {
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (currentPts.current.length === 0) return;
+      // Clear only the bounding box of the current stroke instead of the full canvas.
+      // The full canvas grows with every extension (EXTEND_BY=500), so full clearRect
+      // cost scales with stroke count — bounding-box clearRect stays O(1).
+      const dpr = getDpr();
+      const pad = penSizeRef.current * dpr * 4 + 20;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const [x, y] of currentPts.current) {
+        const px = x * dpr, py = y * dpr;
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+        if (px > maxX) maxX = px;
+        if (py > maxY) maxY = py;
+      }
+      ctx.clearRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2);
       drawStrokeOnCtx(ctx, currentPts.current, penSizeRef.current, penColorRef.current, false);
     }
   }, []);
@@ -370,6 +448,17 @@ export default function InkEditor() {
       isEraser: eraser || undefined,
     };
     inkDocRef.current.strokes.push(stroke);
+    const idx = inkDocRef.current.strokes.length - 1;
+
+    // Pre-compute and cache Path2D for the new stroke so redrawCommitted skips it.
+    const dpr = getDpr();
+    const scaleX = pathCacheScaleXRef.current;
+    const scaledPts = stroke.pts.map(([x, y]) => [x * scaleX * dpr, y * dpr] as [number, number]);
+    const outline = getStroke(scaledPts, { ...FREEHAND_OPTIONS, size: stroke.size * scaleX * dpr });
+    if (outline.length > 0) {
+      pathCacheRef.current.set(idx, new Path2D(svgPathFromStroke(outline)));
+    }
+
     if (!eraser) {
       // Pen: commit the stroke to committedRef now.
       drawStrokeOnCtx(
@@ -385,7 +474,9 @@ export default function InkEditor() {
     actCtx?.clearRect(0, 0, actCtx.canvas.width, actCtx.canvas.height);
     currentPts.current = [];
     setStrokeCount(inkDocRef.current.strokes.length);
-    persistDoc();
+    // Defer JSON.stringify to avoid blocking the current frame.
+    // With 500+ strokes this can be 10-50ms; deferring keeps pen lift instant.
+    setTimeout(persistDoc, 0);
   }, [persistDoc]);
 
   // ---- Input event helpers ----
@@ -467,7 +558,8 @@ export default function InkEditor() {
         }
         const [x, y] = getCoords(touch.clientX, touch.clientY);
         currentPts.current = [[x, y]];
-        drawActiveStroke();
+        rafPendingRef.current = true;
+        requestAnimationFrame(() => { rafPendingRef.current = false; drawActiveStroke(); });
       } else {
         const allFingers = Array.from(e.touches).filter(t => !isStylusTouch(t));
         if (allFingers.length === 2) {
@@ -523,9 +615,15 @@ export default function InkEditor() {
           setEraserCursor({ x: touch.clientX, y: touch.clientY });
         }
         const [x, y] = getCoords(touch.clientX, touch.clientY);
-        currentPts.current.push([x, y]);
-        maybeExtend(y + scrollTopRef.current);
-        drawActiveStroke();
+        const last = currentPts.current[currentPts.current.length - 1];
+        if (!last || Math.hypot(x - last[0], y - last[1]) >= 1.0) {
+          currentPts.current.push([x, y]);
+          maybeExtend(y + scrollTopRef.current);
+        }
+        if (!rafPendingRef.current) {
+          rafPendingRef.current = true;
+          requestAnimationFrame(() => { rafPendingRef.current = false; drawActiveStroke(); });
+        }
       } else {
         const allFingers = Array.from(e.touches).filter(t => !isStylusTouch(t));
         if (allFingers.length === 2 && pinchStateRef.current) {
@@ -616,7 +714,8 @@ export default function InkEditor() {
       if (modeRef.current === "eraser") takeEraserSnapshot();
       const [x, y] = getCoords(e.clientX, e.clientY);
       currentPts.current = [[x, y]];
-      drawActiveStroke();
+      rafPendingRef.current = true;
+      requestAnimationFrame(() => { rafPendingRef.current = false; drawActiveStroke(); });
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -625,9 +724,15 @@ export default function InkEditor() {
       if (stylusTouchActiveRef.current) return; // touch events are handling this stroke
       e.preventDefault();
       const [x, y] = getCoords(e.clientX, e.clientY);
-      currentPts.current.push([x, y]);
-      maybeExtend(y + scrollTopRef.current);
-      drawActiveStroke();
+      const last = currentPts.current[currentPts.current.length - 1];
+      if (!last || Math.hypot(x - last[0], y - last[1]) >= 1.0) {
+        currentPts.current.push([x, y]);
+        maybeExtend(y + scrollTopRef.current);
+      }
+      if (!rafPendingRef.current) {
+        rafPendingRef.current = true;
+        requestAnimationFrame(() => { rafPendingRef.current = false; drawActiveStroke(); });
+      }
     };
 
     const onPointerUp = (_e: PointerEvent) => {
