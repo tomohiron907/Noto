@@ -48,6 +48,7 @@ function buildArboristTree(
     ...childNotes.map((n) => ({
       id: `n:${n.id}`,
       name: n.title || "Untitled",
+      noteType: n.note_type,
     })),
   ];
   if (creating && creating.parentId === parentId) {
@@ -86,6 +87,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState<CreatingState>(null);
+  const [focusedFolderId, setFocusedFolderId] = useState<string | null>(null);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const [treeDims, setTreeDims] = useState({ width: 200, height: 400 });
 
@@ -184,7 +186,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              startCreating("file", rootFolderId ?? "");
+              startCreating("file", focusedFolderId ?? rootFolderId ?? "");
             }}
             disabled={syncing || !rootFolderId}
             className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
@@ -196,7 +198,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              startCreating("ink", rootFolderId ?? "");
+              startCreating("ink", focusedFolderId ?? rootFolderId ?? "");
             }}
             disabled={syncing || !rootFolderId}
             className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
@@ -208,7 +210,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              startCreating("folder", rootFolderId ?? "");
+              startCreating("folder", focusedFolderId ?? rootFolderId ?? "");
             }}
             disabled={syncing || !rootFolderId}
             className="p-1.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-40"
@@ -296,10 +298,16 @@ export default function Sidebar({ onClose }: SidebarProps) {
                     {...props}
                     activeNoteId={activeId}
                     isDesktop={isDesktop}
-                    onNoteClick={(id) => { openNote(id); onClose?.(); }}
+                    onNoteClick={(id) => {
+                      openNote(id);
+                      onClose?.();
+                      const note = notes.find((n) => n.id === id);
+                      setFocusedFolderId(note?.parent_id ?? rootFolderId ?? null);
+                    }}
                     onNoteDelete={deleteNote}
                     onFolderDelete={deleteFolder}
                     onStartCreating={startCreating}
+                    onFolderFocus={setFocusedFolderId}
                     onNoteOpenInWindow={
                       isDesktop
                         ? (id) => {

@@ -18,6 +18,7 @@ export const TREE_INDENT = 16;
 export interface TreeNode {
   id: string; // "f:<localId>" | "n:<localId>" | "__creating__"
   name: string;
+  noteType?: "md" | "ink";
   children?: TreeNode[];
   __isCreating?: boolean;
   __creatingType?: "file" | "folder" | "ink";
@@ -86,6 +87,7 @@ interface NodeCallbacks {
   onNoteDelete: (id: string) => void;
   onFolderDelete: (id: string) => void;
   onStartCreating: (type: "file" | "folder" | "ink", parentId: string) => void;
+  onFolderFocus?: (folderId: string) => void;
   onNoteOpenInWindow?: (id: string) => void;
   onCreatingConfirm?: (name: string) => void;
   onCreatingCancel?: () => void;
@@ -103,6 +105,7 @@ export default function ArboristNode({
   onNoteDelete,
   onFolderDelete,
   onStartCreating,
+  onFolderFocus,
   onNoteOpenInWindow,
   onCreatingConfirm,
   onCreatingCancel,
@@ -169,6 +172,7 @@ export default function ArboristNode({
           onClick={(e) => {
             e.stopPropagation();
             node.toggle();
+            onFolderFocus?.(localId);
           }}
           className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-600 shrink-0"
           aria-label={node.isOpen ? "Collapse" : "Expand"}
@@ -184,7 +188,7 @@ export default function ArboristNode({
 
         <div
           className="flex items-center gap-1 flex-1 min-w-0"
-          onClick={() => node.toggle()}
+          onClick={() => { node.toggle(); onFolderFocus?.(localId); }}
         >
           {node.isOpen ? (
             <FolderOpen size={13} className="shrink-0 text-gray-400 dark:text-gray-500" />
@@ -205,6 +209,17 @@ export default function ArboristNode({
             title="New File"
           >
             <FilePlus size={13} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartCreating("ink", localId);
+              node.open();
+            }}
+            className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-600 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            title="New Ink Note"
+          >
+            <PenLine size={13} />
           </button>
           <button
             onClick={(e) => {
@@ -263,13 +278,23 @@ export default function ArboristNode({
             style={{ left: i * TREE_INDENT + TREE_INDENT / 2 }}
           />
         ))}
-        <FileText
-          size={13}
-          className={clsx(
-            "shrink-0",
-            isActive ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"
-          )}
-        />
+        {node.data.noteType === "ink" ? (
+          <PenLine
+            size={13}
+            className={clsx(
+              "shrink-0",
+              isActive ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"
+            )}
+          />
+        ) : (
+          <FileText
+            size={13}
+            className={clsx(
+              "shrink-0",
+              isActive ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"
+            )}
+          />
+        )}
         <span className="flex-1 text-sm truncate min-w-0">{node.data.name}</span>
         <button
           onClick={(e) => {
