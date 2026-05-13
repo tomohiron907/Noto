@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   FilePlus,
   FileText,
-  Folder,
   FolderPlus,
   LogOut,
   PenLine,
@@ -33,63 +32,33 @@ type CreatingState = { type: "file" | "folder" | "ink"; parentId: string } | nul
 function buildArboristTree(
   folders: FolderMetadata[],
   notes: NoteMetadata[],
-  parentId: string
+  parentId: string,
+  creating: CreatingState = null
 ): TreeNode[] {
   const childFolders = folders.filter(
     (f) => f.parent_id === parentId && f.name !== ".noto"
   );
   const childNotes = notes.filter((n) => n.parent_id === parentId);
-  return [
+  const nodes: TreeNode[] = [
     ...childFolders.map((f) => ({
       id: `f:${f.id}`,
       name: f.name,
-      children: buildArboristTree(folders, notes, f.id),
+      children: buildArboristTree(folders, notes, f.id, creating),
     })),
     ...childNotes.map((n) => ({
       id: `n:${n.id}`,
       name: n.title || "Untitled",
     })),
   ];
-}
-
-function InlineCreateInput({
-  type,
-  value,
-  onChange,
-  onConfirm,
-  onCancel,
-}: {
-  type: "file" | "folder" | "ink";
-  value: string;
-  onChange: (v: string) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
-  return (
-    <div className="flex items-center gap-1.5 py-0.5 px-2 mb-1">
-      {type === "folder" ? (
-        <Folder size={13} className="shrink-0 text-gray-400" />
-      ) : type === "ink" ? (
-        <PenLine size={13} className="shrink-0 text-gray-400" />
-      ) : (
-        <FileText size={13} className="shrink-0 text-gray-400" />
-      )}
-      <input
-        ref={ref}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); onConfirm(); }
-          if (e.key === "Escape") { e.preventDefault(); onCancel(); }
-        }}
-        onBlur={onConfirm}
-        className="flex-1 text-sm bg-transparent outline-none border-b border-neutral-400 text-gray-700 dark:text-gray-200 min-w-0"
-        placeholder={type === "folder" ? "Folder name…" : type === "ink" ? "Ink note name…" : "Note name…"}
-      />
-    </div>
-  );
+  if (creating && creating.parentId === parentId) {
+    nodes.push({
+      id: "__creating__",
+      name: "",
+      __isCreating: true,
+      __creatingType: creating.type,
+    });
+  }
+  return nodes;
 }
 
 interface SidebarProps {
@@ -117,8 +86,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState<CreatingState>(null);
-  const [creatingName, setCreatingName] = useState("");
-  const cancelledRef = useRef(false);
   const treeContainerRef = useRef<HTMLDivElement>(null);
   const [treeDims, setTreeDims] = useState({ width: 200, height: 400 });
 
@@ -152,33 +119,27 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   const startCreating = (type: "file" | "folder" | "ink", parentId: string) => {
     setCreating({ type, parentId });
-    setCreatingName("");
-    cancelledRef.current = false;
   };
 
-  const confirmCreate = async () => {
-    if (cancelledRef.current) return;
-    const name = creatingName.trim();
+  const confirmCreate = async (name: string) => {
+    const trimmed = name.trim();
     const current = creating;
     setCreating(null);
-    setCreatingName("");
-    if (!name || !current) return;
+    if (!trimmed || !current) return;
 
     if (current.type === "folder") {
       const parentArg = current.parentId === rootFolderId ? undefined : current.parentId;
-      await createFolder(name, parentArg);
+      await createFolder(trimmed, parentArg);
     } else {
       const parentArg = current.parentId === rootFolderId ? undefined : current.parentId;
       const noteType = current.type === "ink" ? "ink" : "md";
-      await createNote(parentArg, name, noteType);
+      await createNote(parentArg, trimmed, noteType);
       onClose?.();
     }
   };
 
   const cancelCreate = () => {
-    cancelledRef.current = true;
     setCreating(null);
-    setCreatingName("");
   };
 
   const handleMove: MoveHandler<TreeNode> = ({ dragIds, parentId }) => {
@@ -194,7 +155,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
   };
 
   const treeData = rootFolderId
-    ? buildArboristTree(folders, notes, rootFolderId)
+    ? buildArboristTree(folders, notes, rootFolderId, creating)
     : [];
 
   const filtered = notes.filter((n) =>
@@ -312,15 +273,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </div>
         ) : (
           <>
-            {creating && (
-              <InlineCreateInput
-                type={creating.type}
-                value={creatingName}
-                onChange={setCreatingName}
-                onConfirm={confirmCreate}
-                onCancel={cancelCreate}
-              />
-            )}
             {treeData.length === 0 && !creating && (
               <p className="text-xs text-center text-gray-400 mt-8">
                 No notes yet. Click + to create one.
@@ -356,6 +308,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
                           }
                         : undefined
                     }
+                    onCreatingConfirm={confirmCreate}
+                    onCreatingCancel={cancelCreate}
                   />
                 )}
               </Tree>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { NodeRendererProps } from "react-arborist";
 import {
   ChevronRight,
@@ -7,6 +7,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  PenLine,
   Trash2,
   ExternalLink,
 } from "lucide-react";
@@ -15,9 +16,67 @@ import clsx from "clsx";
 export const TREE_INDENT = 16;
 
 export interface TreeNode {
-  id: string; // "f:<localId>" | "n:<localId>"
+  id: string; // "f:<localId>" | "n:<localId>" | "__creating__"
   name: string;
   children?: TreeNode[];
+  __isCreating?: boolean;
+  __creatingType?: "file" | "folder" | "ink";
+}
+
+function InlineCreateInput({
+  type,
+  onConfirm,
+  onCancel,
+}: {
+  type: "file" | "folder" | "ink";
+  onConfirm: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const ref = useRef<HTMLInputElement>(null);
+  const isComposingRef = useRef(false);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => { ref.current?.focus(); }, []);
+
+  return (
+    <div
+      className="flex items-center gap-1.5 py-0.5 pr-1"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {type === "folder" ? (
+        <Folder size={13} className="shrink-0 text-gray-400" />
+      ) : type === "ink" ? (
+        <PenLine size={13} className="shrink-0 text-gray-400" />
+      ) : (
+        <FileText size={13} className="shrink-0 text-gray-400" />
+      )}
+      <input
+        ref={ref}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onCompositionStart={() => { isComposingRef.current = true; }}
+        onCompositionEnd={() => { isComposingRef.current = false; }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter" && !isComposingRef.current) {
+            e.preventDefault();
+            onConfirm(value);
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            cancelledRef.current = true;
+            onCancel();
+          }
+        }}
+        onBlur={() => {
+          if (!isComposingRef.current && !cancelledRef.current) onConfirm(value);
+        }}
+        className="flex-1 text-sm bg-transparent outline-none border-b border-neutral-400 text-gray-700 dark:text-gray-200 min-w-0"
+        placeholder={type === "folder" ? "Folder name…" : type === "ink" ? "Ink note name…" : "Note name…"}
+      />
+    </div>
+  );
 }
 
 interface NodeCallbacks {
@@ -26,8 +85,10 @@ interface NodeCallbacks {
   onNoteClick: (id: string) => void;
   onNoteDelete: (id: string) => void;
   onFolderDelete: (id: string) => void;
-  onStartCreating: (type: "file" | "folder", parentId: string) => void;
+  onStartCreating: (type: "file" | "folder" | "ink", parentId: string) => void;
   onNoteOpenInWindow?: (id: string) => void;
+  onCreatingConfirm?: (name: string) => void;
+  onCreatingCancel?: () => void;
 }
 
 type Props = NodeRendererProps<TreeNode> & NodeCallbacks;
@@ -43,6 +104,8 @@ export default function ArboristNode({
   onFolderDelete,
   onStartCreating,
   onNoteOpenInWindow,
+  onCreatingConfirm,
+  onCreatingCancel,
 }: Props) {
   const isFolder = node.data.id.startsWith("f:");
   const localId = node.data.id.slice(2);
@@ -61,6 +124,25 @@ export default function ArboristNode({
       document.removeEventListener("contextmenu", close);
     };
   }, [menu]);
+
+  if (node.data.__isCreating) {
+    return (
+      <div style={style} className="relative">
+        {Array.from({ length: node.level }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px bg-neutral-200 dark:bg-neutral-700/60"
+            style={{ left: i * TREE_INDENT + TREE_INDENT / 2 }}
+          />
+        ))}
+        <InlineCreateInput
+          type={node.data.__creatingType ?? "file"}
+          onConfirm={onCreatingConfirm ?? (() => {})}
+          onCancel={onCreatingCancel ?? (() => {})}
+        />
+      </div>
+    );
+  }
 
   if (isFolder) {
     return (
