@@ -62,3 +62,9 @@ pub struct SyncStatus {
     pub phase: SyncPhase,
     pub last_sync_at: Option<i64>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncCompletePayload {
+    pub pushed: usize,
+    pub remaining_dirty: i64,
+}

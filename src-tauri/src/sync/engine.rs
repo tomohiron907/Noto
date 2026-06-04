@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::drive::client::DriveClient;
 use super::db;
+use super::types::SyncCompletePayload;
 
 const DRIVE_FILES_API: &str = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD_API: &str = "https://www.googleapis.com/upload/drive/v3/files";
@@ -36,14 +37,8 @@ fn note_type_for(mime: &str, name: &str) -> &'static str {
 pub struct SyncDb {
     pub conn: Mutex<rusqlite::Connection>,
     pub syncing: AtomicBool,
+    pub pending_trigger: AtomicBool,
     pub http: reqwest::Client,
-}
-
-struct SyncGuard<'a>(&'a AtomicBool);
-impl<'a> Drop for SyncGuard<'a> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
-    }
 }
 
 // ── Full initial import ───────────────────────────────────────────────────────
@@ -631,46 +626,62 @@ pub async fn move_note_on_drive(
 
 pub async fn run_sync_cycle(app: AppHandle, db_state: std::sync::Arc<SyncDb>) {
     if db_state.syncing.swap(true, Ordering::SeqCst) {
+        db_state.pending_trigger.store(true, Ordering::SeqCst);
         return;
     }
-    let _guard = SyncGuard(&db_state.syncing);
 
-    let _ = app.emit("sync:start", ());
+    // sync中に届いたtriggerを消化するためループする。
+    // syncing フラグは全イテレーションを通して true のまま保持する。
+    loop {
+        db_state.pending_trigger.store(false, Ordering::SeqCst);
 
-    let client = match DriveClient::with_http(db_state.http.clone(), &app).await {
-        Ok(c) => c,
-        Err(e) => {
-            log::warn!("[sync] auth failed: {}", e);
-            let _ = app.emit("sync:error", e.to_string());
-            return;
+        let _ = app.emit("sync:start", ());
+
+        let client = match DriveClient::with_http(db_state.http.clone(), &app).await {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("[sync] auth failed: {}", e);
+                let _ = app.emit("sync:error", e.to_string());
+                break;
+            }
+        };
+
+        let push_result = push_dirty(&client, &db_state).await;
+        if let Err(e) = &push_result {
+            log::warn!("[sync] push failed: {}", e);
         }
-    };
 
-    let push_result = push_dirty(&client, &db_state).await;
-    if let Err(e) = &push_result {
-        log::warn!("[sync] push failed: {}", e);
+        match pull_changes(&client, &db_state).await {
+            Ok((had_changes, updated_note_ids)) => {
+                let pushed = push_result.as_ref().copied().unwrap_or(0);
+                let remaining_dirty = {
+                    let conn = db_state.conn.lock().unwrap();
+                    let ts = db::now_ms();
+                    let _ = db::set_sync_state(&conn, "last_sync_at", &ts.to_string());
+                    db::count_dirty_notes(&conn).unwrap_or(0)
+                };
+                log::info!("[sync] pull done: had_changes={} updated_note_ids={:?}", had_changes, updated_note_ids);
+                if !updated_note_ids.is_empty() {
+                    log::info!("[sync] emitting sync:notes_updated with {:?}", updated_note_ids);
+                    let _ = app.emit("sync:notes_updated", updated_note_ids);
+                }
+                if had_changes || push_result.map(|n| n > 0).unwrap_or(false) {
+                    let _ = app.emit("sync:updated", ());
+                }
+                let _ = app.emit("sync:complete", SyncCompletePayload { pushed, remaining_dirty });
+            }
+            Err(e) => {
+                log::warn!("[sync] pull failed: {}", e);
+                let _ = app.emit("sync:error", e.to_string());
+                break;
+            }
+        }
+
+        // このイテレーション中に新しいtriggerが来ていなければ終了
+        if !db_state.pending_trigger.load(Ordering::SeqCst) {
+            break;
+        }
     }
 
-    match pull_changes(&client, &db_state).await {
-        Ok((had_changes, updated_note_ids)) => {
-            {
-                let conn = db_state.conn.lock().unwrap();
-                let ts = db::now_ms();
-                let _ = db::set_sync_state(&conn, "last_sync_at", &ts.to_string());
-            }
-            log::info!("[sync] pull done: had_changes={} updated_note_ids={:?}", had_changes, updated_note_ids);
-            if !updated_note_ids.is_empty() {
-                log::info!("[sync] emitting sync:notes_updated with {:?}", updated_note_ids);
-                let _ = app.emit("sync:notes_updated", updated_note_ids);
-            }
-            if had_changes || push_result.map(|n| n > 0).unwrap_or(false) {
-                let _ = app.emit("sync:updated", ());
-            }
-            let _ = app.emit("sync:complete", ());
-        }
-        Err(e) => {
-            log::warn!("[sync] pull failed: {}", e);
-            let _ = app.emit("sync:error", e.to_string());
-        }
-    }
+    db_state.syncing.store(false, Ordering::SeqCst);
 }

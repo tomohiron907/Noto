@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAuthStore } from "./stores/authStore";
 import { useNotesStore } from "./stores/notesStore";
+import type { SyncCompletePayload } from "./lib/types";
 import AuthScreen from "./components/auth/AuthScreen";
 import AppShell from "./components/layout/AppShell";
 
@@ -11,7 +12,8 @@ const NOTE_WINDOW_ID = new URLSearchParams(window.location.search).get("noteId")
 
 export default function App() {
   const { user, loading, restoreSession } = useAuthStore();
-  const { createNote, activeId, activeTitle, deleteNote, loadTree, refreshActiveNote } = useNotesStore();
+  const { createNote, activeId, activeTitle, deleteNote, loadTree, refreshActiveNote,
+          onDriveSyncStart, onDriveSyncComplete, onDriveSyncError } = useNotesStore();
 
   // Respect system dark/light mode
   useEffect(() => {
@@ -100,6 +102,20 @@ export default function App() {
     });
     return () => { unlisten.then((fn) => fn()); };
   }, [refreshActiveNote]);
+
+  // Drive sync state tracking
+  useEffect(() => {
+    const unlistenStart = listen("sync:start", () => onDriveSyncStart());
+    const unlistenComplete = listen<SyncCompletePayload>("sync:complete", (e) =>
+      onDriveSyncComplete(e.payload.pushed, e.payload.remaining_dirty)
+    );
+    const unlistenError = listen<string>("sync:error", (e) => onDriveSyncError(e.payload));
+    return () => {
+      unlistenStart.then((fn) => fn());
+      unlistenComplete.then((fn) => fn());
+      unlistenError.then((fn) => fn());
+    };
+  }, [onDriveSyncStart, onDriveSyncComplete, onDriveSyncError]);
 
   if (loading) {
     return (

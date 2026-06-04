@@ -17,7 +17,7 @@ const CLIENT_ID: &str = env!("GOOGLE_IOS_CLIENT_ID");
 const REVERSED_CLIENT_ID: &str = env!("GOOGLE_IOS_REVERSED_CLIENT_ID");
 
 const CLIENT_SECRET: &str = env!("GOOGLE_CLIENT_SECRET");
-const SCOPES: &str = "https://www.googleapis.com/auth/drive.file \
+const SCOPES: &str = "https://www.googleapis.com/auth/drive \
                       https://www.googleapis.com/auth/userinfo.email \
                       https://www.googleapis.com/auth/userinfo.profile";
 

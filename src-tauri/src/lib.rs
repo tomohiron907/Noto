@@ -286,6 +286,7 @@ pub fn run() {
             let db_arc = Arc::new(SyncDb {
                 conn: std::sync::Mutex::new(conn),
                 syncing: std::sync::atomic::AtomicBool::new(false),
+                pending_trigger: std::sync::atomic::AtomicBool::new(false),
                 http: reqwest::Client::new(),
             });
             app.manage(db_arc.clone());

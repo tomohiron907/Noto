@@ -63,6 +63,15 @@ pub fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
+pub fn count_dirty_notes(conn: &Connection) -> Result<i64> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM notes WHERE dirty = 1 AND deleted = 0",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(count)
+}
+
 // ── sync_state helpers ────────────────────────────────────────────────────────
 
 pub fn get_sync_state(conn: &Connection, key: &str) -> Result<Option<String>> {

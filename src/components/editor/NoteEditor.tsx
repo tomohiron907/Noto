@@ -1,10 +1,21 @@
 import { useEffect, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { Cloud, CloudOff, CloudUpload, CheckCircle2 } from "lucide-react";
 import { useNotesStore } from "../../stores/notesStore";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import { extensions } from "./extensions";
 import BubbleMenuBar from "./BubbleMenuBar";
 import SlashMenu from "./SlashMenu";
+
+function formatRelativeTime(ts: number): string {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 10) return "just now";
+  if (diff < 60) return `${diff}s ago`;
+  const m = Math.floor(diff / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ago`;
+}
 
 function getMarkdown(editor: ReturnType<typeof useEditor>): string {
   if (!editor) return "";
@@ -13,7 +24,8 @@ function getMarkdown(editor: ReturnType<typeof useEditor>): string {
 }
 
 export default function NoteEditor() {
-  const { activeId, activeContent, activeTitle, markDirty, setActiveTitle, syncing, dirty, loading } =
+  const { activeId, activeContent, activeTitle, markDirty, setActiveTitle,
+          syncing, dirty, loading, driveSync, driveSyncError, lastSyncAt, hasPendingDrive } =
     useNotesStore();
   useAutoSave();
 
@@ -56,7 +68,18 @@ export default function NoteEditor() {
     ? (editor.storage as Record<string, any>)?.characterCount?.words?.() ?? 0
     : 0;
 
-  const statusText = syncing ? "Saving…" : dirty ? "Unsaved" : "Saved";
+  // Derive combined Drive sync status
+  const driveStatus = (() => {
+    if (dirty || syncing) return { label: syncing ? "Saving…" : "Editing", color: dirty ? "text-amber-500" : "text-blue-500", icon: null };
+    if (driveSync === 'syncing') return { label: "Syncing…", color: "text-blue-500", icon: <CloudUpload size={12} className="shrink-0" /> };
+    if (driveSync === 'error') return { label: driveSyncError ?? "Drive sync failed", color: "text-red-500", icon: <CloudOff size={12} className="shrink-0" /> };
+    if (hasPendingDrive) return { label: "Saved · Pending", color: "text-amber-500", icon: <Cloud size={12} className="shrink-0" /> };
+    return {
+      label: lastSyncAt ? `Synced · ${formatRelativeTime(lastSyncAt)}` : "Synced",
+      color: "text-green-500",
+      icon: <CheckCircle2 size={12} className="shrink-0" />,
+    };
+  })();
 
   if (!editor) return null;
 
@@ -104,8 +127,9 @@ export default function NoteEditor() {
       {/* Status bar */}
       <div className="shrink-0 flex items-center justify-end gap-4 px-6 py-1.5 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400">
         <span>{wordCount} words</span>
-        <span className={syncing ? "text-blue-500" : dirty ? "text-amber-500" : ""}>
-          {statusText}
+        <span className={`flex items-center gap-1 ${driveStatus.color}`}>
+          {driveStatus.icon}
+          {driveStatus.label}
         </span>
       </div>
     </div>

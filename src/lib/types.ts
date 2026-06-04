@@ -31,3 +31,8 @@ export interface SyncStatus {
   phase: SyncPhase;
   last_sync_at: number | null;
 }
+
+export interface SyncCompletePayload {
+  pushed: number;
+  remaining_dirty: number;
+}

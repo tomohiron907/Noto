@@ -3,6 +3,8 @@ import { immer } from "zustand/middleware/immer";
 import { tauriSync, tauriWindow } from "../lib/tauri";
 import type { FolderMetadata, NoteMetadata } from "../lib/types";
 
+export type DriveSyncState = 'idle' | 'syncing' | 'error';
+
 interface NotesState {
   notes: NoteMetadata[];
   folders: FolderMetadata[];
@@ -14,6 +16,10 @@ interface NotesState {
   syncing: boolean;
   loading: boolean;
   error: string | null;
+  driveSync: DriveSyncState;
+  driveSyncError: string | null;
+  lastSyncAt: number | null;
+  hasPendingDrive: boolean;
 
   loadTree: () => Promise<void>;
   openNote: (id: string) => Promise<void>;
@@ -27,6 +33,9 @@ interface NotesState {
   markDirty: (content: string) => void;
   setActiveTitle: (title: string) => void;
   refreshActiveNote: () => Promise<void>;
+  onDriveSyncStart: () => void;
+  onDriveSyncComplete: (pushed: number, remainingDirty: number) => void;
+  onDriveSyncError: (error: string) => void;
 }
 
 export const useNotesStore = create<NotesState>()(
@@ -41,6 +50,10 @@ export const useNotesStore = create<NotesState>()(
     syncing: false,
     loading: false,
     error: null,
+    driveSync: 'idle',
+    driveSyncError: null,
+    lastSyncAt: null,
+    hasPendingDrive: false,
 
     loadTree: async () => {
       set((s) => { s.loading = true; });
@@ -126,6 +139,7 @@ export const useNotesStore = create<NotesState>()(
           const idx = s.notes.findIndex((n) => n.id === activeId);
           if (idx !== -1) s.notes[idx] = updated;
         });
+        set((s) => { s.hasPendingDrive = true; });
         tauriSync.trigger().catch(() => {});
       } catch (e) {
         set((s) => {
@@ -207,6 +221,29 @@ export const useNotesStore = create<NotesState>()(
         s.activeTitle = title;
         s.dirty = true;
       });
+    },
+
+    onDriveSyncStart: () => {
+      // Only show "Syncing…" if the user has a pending local edit — ignore background polls
+      set((s) => {
+        if (!s.hasPendingDrive) return;
+        s.driveSync = 'syncing';
+        s.driveSyncError = null;
+      });
+    },
+
+    onDriveSyncComplete: (pushed: number, remainingDirty: number) => {
+      set((s) => {
+        s.driveSync = 'idle';
+        s.driveSyncError = null;
+        // Only stamp lastSyncAt when we actually pushed something
+        if (pushed > 0) s.lastSyncAt = Date.now();
+        if (remainingDirty === 0) s.hasPendingDrive = false;
+      });
+    },
+
+    onDriveSyncError: (error: string) => {
+      set((s) => { s.driveSync = 'error'; s.driveSyncError = error; });
     },
 
     refreshActiveNote: async () => {
