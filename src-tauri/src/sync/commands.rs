@@ -6,6 +6,7 @@ use super::{
     engine::{self, SyncDb},
     types::{FolderMetadata, NoteMetadata, SyncPhase, SyncStatus, TreeResponse},
 };
+use crate::drive::{client::DriveClient, types::FileRevision};
 
 #[tauri::command]
 pub async fn sync_list_tree(state: State<'_, Arc<SyncDb>>) -> Result<TreeResponse, String> {
@@ -334,4 +335,66 @@ pub async fn sync_get_status(state: State<'_, Arc<SyncDb>>) -> Result<SyncStatus
         phase: SyncPhase::Idle,
         last_sync_at,
     })
+}
+
+#[tauri::command]
+pub async fn sync_list_revisions(
+    app: AppHandle,
+    state: State<'_, Arc<SyncDb>>,
+    local_id: String,
+) -> Result<Vec<FileRevision>, String> {
+    let drive_id = {
+        let conn = state.conn.lock().unwrap();
+        db::get_note_drive_id(&conn, &local_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Note not yet synced to Drive".to_string())?
+    };
+
+    let client = DriveClient::new(&app).await.map_err(|e| e.to_string())?;
+    let url = format!(
+        "https://www.googleapis.com/drive/v3/files/{}/revisions\
+         ?fields=revisions(id,modifiedTime,lastModifyingUser,size)&pageSize=100",
+        drive_id
+    );
+
+    #[derive(serde::Deserialize)]
+    struct RevisionList {
+        revisions: Option<Vec<DriveRevision>>,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct DriveRevision {
+        id: String,
+        modified_time: String,
+        last_modifying_user: Option<DriveUser>,
+        size: Option<String>,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct DriveUser {
+        display_name: String,
+    }
+
+    let resp: RevisionList = client
+        .get(&url)
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut revisions: Vec<FileRevision> = resp
+        .revisions
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| FileRevision {
+            id: r.id,
+            modified_time: r.modified_time,
+            modified_by: r.last_modifying_user.map(|u| u.display_name),
+            size: r.size,
+        })
+        .collect();
+
+    revisions.reverse();
+    Ok(revisions)
 }

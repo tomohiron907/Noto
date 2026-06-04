@@ -5,6 +5,7 @@ import type {
   FolderMetadata,
   TreeResponse,
   SyncStatus,
+  FileRevision,
 } from "./types";
 
 export const tauriAuth = {
@@ -40,6 +41,8 @@ export const tauriSync = {
     invoke<void>("sync_move_folder", { localId, newParentLocalId }),
   trigger: () => invoke<void>("sync_trigger"),
   getStatus: () => invoke<SyncStatus>("sync_get_status"),
+  listRevisions: (localId: string) =>
+    invoke<FileRevision[]>("sync_list_revisions", { localId }),
 };
 
 export const tauriAssets = {

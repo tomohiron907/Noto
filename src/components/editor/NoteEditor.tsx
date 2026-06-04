@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { Cloud, CloudOff, CloudUpload, CheckCircle2 } from "lucide-react";
 import { useNotesStore } from "../../stores/notesStore";
@@ -6,6 +6,7 @@ import { useAutoSave } from "../../hooks/useAutoSave";
 import { extensions } from "./extensions";
 import BubbleMenuBar from "./BubbleMenuBar";
 import SlashMenu from "./SlashMenu";
+import RevisionHistoryPanel from "./RevisionHistoryPanel";
 
 function formatRelativeTime(ts: number): string {
   const diff = Math.floor((Date.now() - ts) / 1000);
@@ -31,6 +32,19 @@ export default function NoteEditor() {
 
   const suppressUpdate = useRef(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const statusBarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (statusBarRef.current && !statusBarRef.current.contains(e.target as Node)) {
+        setHistoryOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [historyOpen]);
 
   const editor = useEditor({
     extensions,
@@ -125,12 +139,22 @@ export default function NoteEditor() {
       </div>
 
       {/* Status bar */}
-      <div className="shrink-0 flex items-center justify-end gap-4 px-6 py-1.5 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400">
+      <div
+        ref={statusBarRef}
+        className="relative shrink-0 flex items-center justify-end gap-4 px-6 py-1.5 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400"
+      >
+        {historyOpen && activeId && (
+          <RevisionHistoryPanel activeId={activeId} onClose={() => setHistoryOpen(false)} />
+        )}
         <span>{wordCount} words</span>
-        <span className={`flex items-center gap-1 ${driveStatus.color}`}>
+        <button
+          onClick={() => activeId && setHistoryOpen((v) => !v)}
+          disabled={!activeId}
+          className={`flex items-center gap-1 ${driveStatus.color} ${activeId ? "cursor-pointer hover:opacity-70 transition-opacity" : "cursor-default"}`}
+        >
           {driveStatus.icon}
           {driveStatus.label}
-        </span>
+        </button>
       </div>
     </div>
   );

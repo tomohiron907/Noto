@@ -35,3 +35,11 @@ pub struct TreeResponse {
     pub folders: Vec<FolderMetadata>,
     pub notes: Vec<NoteMetadata>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileRevision {
+    pub id: String,
+    pub modified_time: String,
+    pub modified_by: Option<String>,
+    pub size: Option<String>,
+}

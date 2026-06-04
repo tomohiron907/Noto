@@ -36,3 +36,10 @@ export interface SyncCompletePayload {
   pushed: number;
   remaining_dirty: number;
 }
+
+export interface FileRevision {
+  id: string;
+  modified_time: string;
+  modified_by: string | null;
+  size: string | null;
+}
